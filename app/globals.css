@@ -117,6 +117,14 @@
   --sidebar-ring: oklch(0.552 0.016 285.938);
 }
 
+@keyframes memento-spin {
+  0%   { transform: rotate(0deg); }
+  15%  { transform: rotate(180deg); }
+  50%  { transform: rotate(180deg); }
+  65%  { transform: rotate(0deg); }
+  100% { transform: rotate(0deg); }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
