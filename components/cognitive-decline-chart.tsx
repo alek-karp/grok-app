@@ -18,26 +18,52 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import type { DashboardKpiEntry } from "@/lib/dashboard-kpi";
+import type {
+  DashboardKpiEntry,
+  DashboardMedicationStatus,
+  DashboardMood,
+} from "@/lib/dashboard-kpi";
 import { cn } from "@/lib/utils";
 
 const BASELINE_WINDOW = 7;
 const RANGE_OPTIONS = [14, 30, 60] as const;
 type Range = (typeof RANGE_OPTIONS)[number];
 
+const clamp = (n: number) => Math.max(0, Math.min(100, n));
+
+// Daily Cognitive Signal Index weights (memento_overview.md §7).
+const WEIGHTS = {
+  fluency: 0.25, // Semantic verbal fluency
+  story: 0.25, // Delayed story recall
+  naming: 0.15, // Object naming accuracy + word-finding failures
+  recallOrient: 0.15, // Immediate word recall + temporal orientation
+  function: 0.1, // Daily function (medication adherence)
+  moodPara: 0.1, // Mood + stop-word fraction (paralinguistic)
+} as const;
+
+// Categorical KPIs mapped to a 0–100 score (null when not assessed).
+const MED_SCORE: Record<DashboardMedicationStatus, number | null> = {
+  Confirmed: 100,
+  Uncertain: 50,
+  Missed: 0,
+  "Not assessed": null,
+};
+const MOOD_SCORE: Record<DashboardMood, number | null> = {
+  Cheerful: 100,
+  Neutral: 80,
+  Flat: 40,
+  Anxious: 40,
+  Agitated: 20,
+  "Not assessed": null,
+};
+
 const config = {
-  composite: { label: "Composite", color: "var(--chart-1)" },
-  language: { label: "Language", color: "var(--chart-2)" },
-  memory: { label: "Memory", color: "var(--chart-3)" },
-  orientation: { label: "Orientation", color: "var(--chart-4)" },
+  average: { label: "Average", color: "var(--chart-1)" },
 } satisfies ChartConfig;
 
 type ChartDatum = {
   date: string;
-  composite: number | null;
-  language: number | null;
-  memory: number | null;
-  orientation: number | null;
+  average: number | null;
 };
 
 function average(values: Array<number | null>): number | null {
@@ -48,46 +74,81 @@ function average(values: Array<number | null>): number | null {
 
 function normalizeScore(value: number | null, max: number): number | null {
   if (value == null) return null;
-  return Math.max(0, Math.min(100, (value / max) * 100));
+  return clamp((value / max) * 100);
+}
+
+// Weighted average over only the buckets that were assessed this call: missing
+// buckets drop out and the remaining weights are renormalised to sum to 1.
+function weightedAverage(parts: Array<[number, number | null]>): number | null {
+  const present = parts.filter(
+    (part): part is [number, number] => part[1] != null,
+  );
+  const totalWeight = present.reduce((sum, [w]) => sum + w, 0);
+  if (totalWeight === 0) return null;
+  const weighted = present.reduce((sum, [w, v]) => sum + w * v, 0);
+  return weighted / totalWeight;
 }
 
 function buildChartData(data: DashboardKpiEntry[]): ChartDatum[] {
   return data.map((d) => {
+    // Each metric/bucket normalised to 0–100 (higher = better), or null when
+    // the task didn't happen this call.
     const fluency = normalizeScore(d.verbalFluency, 20);
-    const naming = d.namingAccuracy;
-    const immediateRecall = normalizeScore(d.immediateWordRecall, 3);
-    const delayedRecall = normalizeScore(d.delayedWordRecall, 3);
-    const wordRecall = average([immediateRecall, delayedRecall]);
     const story = normalizeScore(d.storyRecallDetails, 10);
-    const orient = normalizeScore(d.temporalOrientation, 4);
-    const language = average([fluency, naming]);
-    const memory = average([wordRecall, story]);
-    const composite = average([language, memory, orient]);
+
+    // Naming bucket: accuracy % paired with word-finding failures (0 fails → 100).
+    const wordFinding =
+      d.wordFindingFailures == null
+        ? null
+        : clamp(100 - d.wordFindingFailures * 20);
+    const naming = average([d.namingAccuracy, wordFinding]);
+
+    // Recall + orientation bucket.
+    const recallOrient = average([
+      normalizeScore(d.immediateWordRecall, 3),
+      normalizeScore(d.temporalOrientation, 4),
+    ]);
+
+    // Daily function: medication adherence.
+    const fn = MED_SCORE[d.medicationAdherence];
+
+    // Mood + paralinguistic: stop-word fraction inverted over a 0.30–0.50 range.
+    const stopWord =
+      d.stopWordFraction == null
+        ? null
+        : clamp(100 - ((d.stopWordFraction - 0.3) / (0.5 - 0.3)) * 100);
+    const moodPara = average([MOOD_SCORE[d.mood], stopWord]);
+
+    const composite = weightedAverage([
+      [WEIGHTS.fluency, fluency],
+      [WEIGHTS.story, story],
+      [WEIGHTS.naming, naming],
+      [WEIGHTS.recallOrient, recallOrient],
+      [WEIGHTS.function, fn],
+      [WEIGHTS.moodPara, moodPara],
+    ]);
 
     return {
       date: d.date,
-      composite: composite == null ? null : Math.round(composite),
-      language: language == null ? null : Math.round(language),
-      memory: memory == null ? null : Math.round(memory),
-      orientation: orient == null ? null : Math.round(orient),
+      average: composite == null ? null : Math.round(composite),
     };
   });
 }
 
 function baselineBounds(allChartData: ChartDatum[]) {
-  const baselineComposites = allChartData
+  const baselineAverages = allChartData
     .slice(0, BASELINE_WINDOW)
-    .map((d) => d.composite)
+    .map((d) => d.average)
     .filter((value): value is number => value != null);
 
-  if (baselineComposites.length === 0) return null;
+  if (baselineAverages.length === 0) return null;
 
   const baselineMean =
-    baselineComposites.reduce((a, b) => a + b, 0) / baselineComposites.length;
+    baselineAverages.reduce((a, b) => a + b, 0) / baselineAverages.length;
   const baselineVariance =
-    baselineComposites.length > 1
-      ? baselineComposites.reduce((s, v) => s + (v - baselineMean) ** 2, 0) /
-        (baselineComposites.length - 1)
+    baselineAverages.length > 1
+      ? baselineAverages.reduce((s, v) => s + (v - baselineMean) ** 2, 0) /
+        (baselineAverages.length - 1)
       : 0;
   const baselineSd = Math.sqrt(baselineVariance);
 
@@ -104,7 +165,7 @@ export function CognitiveDeclineChart({ data }: { data: DashboardKpiEntry[] }) {
   const allChartData = buildChartData(data);
   const chartData = allChartData.slice(-range);
   const bounds = baselineBounds(allChartData);
-  const hasDomainData = allChartData.some((d) => d.composite != null);
+  const hasDomainData = allChartData.some((d) => d.average != null);
   const baselineVisible =
     allChartData.length >= BASELINE_WINDOW &&
     chartData.some((d) => d.date === allChartData[0].date);
@@ -118,7 +179,7 @@ export function CognitiveDeclineChart({ data }: { data: DashboardKpiEntry[] }) {
         <div>
           <h2 className="text-sm font-semibold">Cognitive Decline</h2>
           <p className="text-sm text-muted-foreground">
-            Assessed domains normalized 0-100. Null tasks are left as gaps.
+            Weighted cognitive index 0–100 · green band = personal baseline ±2σ
           </p>
         </div>
         <div className="flex gap-1 shrink-0">
@@ -193,34 +254,7 @@ export function CognitiveDeclineChart({ data }: { data: DashboardKpiEntry[] }) {
               <ChartLegend content={<ChartLegendContent />} />
               <Line
                 connectNulls
-                dataKey="language"
-                type="monotone"
-                stroke="var(--chart-2)"
-                strokeWidth={1.5}
-                dot={{ r: 3 }}
-                strokeOpacity={0.7}
-              />
-              <Line
-                connectNulls
-                dataKey="memory"
-                type="monotone"
-                stroke="var(--chart-3)"
-                strokeWidth={1.5}
-                dot={{ r: 3 }}
-                strokeOpacity={0.7}
-              />
-              <Line
-                connectNulls
-                dataKey="orientation"
-                type="monotone"
-                stroke="var(--chart-4)"
-                strokeWidth={1.5}
-                dot={{ r: 3 }}
-                strokeOpacity={0.7}
-              />
-              <Line
-                connectNulls
-                dataKey="composite"
+                dataKey="average"
                 type="monotone"
                 stroke="var(--chart-1)"
                 strokeWidth={3}
@@ -230,7 +264,7 @@ export function CognitiveDeclineChart({ data }: { data: DashboardKpiEntry[] }) {
           </ChartContainer>
         ) : (
           <div className="flex h-full min-h-64 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
-            No assessed memory, language, or orientation tasks yet.
+            No assessed cognitive tasks yet.
           </div>
         )}
       </div>
