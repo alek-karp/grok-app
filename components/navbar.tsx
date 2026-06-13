@@ -5,7 +5,7 @@ import { useRouter, usePathname } from "next/navigation"
 import { ModeToggle } from "@/components/mode-toggle"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { PhoneCallIcon, CircleDotDashed, LayoutDashboard, SlidersHorizontal } from "lucide-react"
+import { PhoneCallIcon, CircleDotDashed, LayoutDashboard, SlidersHorizontal, UserRound } from "lucide-react"
 import { ROUTES } from "@/lib/routes"
 
 export function Navbar() {
@@ -40,6 +40,12 @@ export function Navbar() {
                 <Link href={ROUTES.personalization} className="flex items-center gap-1.5">
                   <SlidersHorizontal className="size-3.5" />
                   Personalization
+                </Link>
+              </TabsTrigger>
+              <TabsTrigger value={ROUTES.caretaker} asChild>
+                <Link href={ROUTES.caretaker} className="flex items-center gap-1.5">
+                  <UserRound className="size-3.5" />
+                  Caretaker
                 </Link>
               </TabsTrigger>
             </TabsList>

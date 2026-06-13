@@ -1,11 +1,22 @@
 "use client";
 
-import { EarOff, Send, Wifi, WifiOff } from "lucide-react";
+import { AlertCircle, UserRound, Send, Wifi, WifiOff } from "lucide-react";
 import { useState } from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 
 const SUGGESTIONS = [
   "Gently ask if they took their medication",
@@ -54,98 +65,134 @@ export default function CaretakerPage() {
   }
 
   return (
-    <div className="mx-auto flex h-[calc(100svh-3.5rem)] w-full min-h-0 max-w-md flex-col gap-4 px-4 py-6">
-      <header className="flex flex-col gap-1">
-        <div className="flex items-center gap-2">
-          <EarOff className="size-5 text-amber-600" />
-          <h1 className="text-2xl font-semibold tracking-tight">Caretaker</h1>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          Quietly guide the conversation. Your suggestions steer the assistant’s
-          next reply — the person on the call never hears them or knows you’re
-          here.
-        </p>
-      </header>
-
-      <div className="flex flex-col gap-2 rounded-xl border border-border bg-muted/30 p-3">
-        <label className="text-xs font-medium text-muted-foreground">
-          Who are you guiding?
-        </label>
-        <PhoneInput value={phone.replace(/^\+1/, "")} onChange={setPhone} />
-        <Input
-          placeholder="Their name (optional)"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="rounded-md"
-        />
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          {connected ? (
-            <>
-              <Wifi className="size-3.5 text-green-600" /> Ready to guide
-            </>
-          ) : (
-            <>
-              <WifiOff className="size-3.5" /> Enter their phone number to begin
-            </>
-          )}
-        </span>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5">
-        {SUGGESTIONS.map((s) => (
-          <button
-            key={s}
-            type="button"
-            disabled={!connected || sending}
-            onClick={() => send(s)}
-            className="rounded-full border border-amber-500/40 bg-background px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-amber-500/10 disabled:opacity-50"
-          >
-            {s}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex items-center gap-2">
-        <Input
-          value={text}
-          disabled={!connected || sending}
-          placeholder="Whisper a suggestion…"
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") send(text);
-          }}
-          className="rounded-md"
-        />
-        <Button
-          onClick={() => send(text)}
-          disabled={!connected || sending || !text.trim()}
-        >
-          <Send className="size-4" />
-          Send
-        </Button>
-      </div>
-
-      {error ? (
-        <p className="text-sm text-destructive">{error}</p>
-      ) : null}
-
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-xl border border-border bg-muted/20 p-3">
-        {sent.length === 0 ? (
-          <p className="m-auto text-xs text-muted-foreground">
-            Notes you send will appear here.
+    <div className="flex flex-1 min-h-0 gap-4 p-4">
+      {/* Left panel */}
+      <div className="flex w-80 shrink-0 flex-col gap-4">
+        <div>
+          <div className="mb-1 flex items-center gap-2">
+            <UserRound className="size-5 text-amber-600" />
+            <h1 className="text-2xl font-semibold tracking-tight">Caretaker</h1>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Quietly guide the conversation. Your suggestions steer the
+            assistant&apos;s next reply — the person on the call never hears
+            them or knows you&apos;re here.
           </p>
-        ) : (
-          sent.map((n) => (
-            <div
-              key={n.id}
-              className="flex items-start gap-2 rounded-lg border border-border bg-background px-3 py-2"
+        </div>
+
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle>Who are you guiding?</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            <PhoneInput value={phone.replace(/^\+1/, "")} onChange={setPhone} />
+            <Input
+              placeholder="Their name (optional)"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+              {connected ? (
+                <>
+                  <Wifi className="size-4 text-green-600" /> Ready to guide
+                </>
+              ) : (
+                <>
+                  <WifiOff className="size-4" /> Enter their phone number to
+                  begin
+                </>
+              )}
+            </span>
+          </CardContent>
+        </Card>
+
+        <Card size="sm" className="flex-1 min-h-0 flex flex-col">
+          <CardHeader>
+            <CardTitle>Quick suggestions</CardTitle>
+            <CardDescription>Tap to send instantly</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-2">
+            {SUGGESTIONS.map((s) => (
+              <Button
+                key={s}
+                variant="outline"
+                size="sm"
+                disabled={!connected || sending}
+                onClick={() => send(s)}
+                className="h-auto justify-start whitespace-normal py-2 text-left"
+              >
+                {s}
+              </Button>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Right panel */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+        <Card className="flex min-h-0 flex-1 flex-col">
+          <CardHeader>
+            <CardTitle>Sent notes</CardTitle>
+            <CardDescription>
+              {sent.length === 0
+                ? "Notes you send will appear here."
+                : `${sent.length} note${sent.length === 1 ? "" : "s"} sent this session`}
+            </CardDescription>
+          </CardHeader>
+          <Separator />
+          <CardContent className="flex-1 min-h-0 p-0">
+            <ScrollArea className="h-full">
+              <div className="flex flex-col gap-2 p-6">
+                {sent.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    No notes sent yet.
+                  </p>
+                ) : (
+                  sent.map((n) => (
+                    <div
+                      key={n.id}
+                      className="flex items-start gap-3 rounded-2xl border border-border bg-muted/30 px-4 py-3"
+                    >
+                      <span className="flex-1 text-sm">{n.text}</span>
+                      <Badge
+                        variant={n.live ? "default" : "outline"}
+                        className="shrink-0"
+                      >
+                        {n.live ? "delivered" : "no live call"}
+                      </Badge>
+                    </div>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </CardContent>
+          <Separator />
+          <CardFooter className="gap-2 py-4">
+            <Input
+              value={text}
+              disabled={!connected || sending}
+              placeholder="Whisper a suggestion…"
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") send(text);
+              }}
+              className="flex-1"
+            />
+            <Button
+              onClick={() => send(text)}
+              disabled={!connected || sending || !text.trim()}
             >
-              <span className="flex-1 text-sm">{n.text}</span>
-              <Badge variant={n.live ? "default" : "outline"}>
-                {n.live ? "delivered" : "no live call"}
-              </Badge>
-            </div>
-          ))
+              <Send className="size-4" />
+              Send
+            </Button>
+          </CardFooter>
+        </Card>
+
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle className="size-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
       </div>
     </div>
