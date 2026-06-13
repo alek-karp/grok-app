@@ -32,7 +32,9 @@ export async function POST(request: Request) {
   }
 
   const patient = await resolvePatientProfile(body);
-  const hits = await recallAboutPatient(patient.id, query, 6);
+  // Targeted live lookup: use a stricter threshold so unrelated queries return
+  // nothing (lets the agent honestly say it doesn't remember).
+  const hits = await recallAboutPatient(patient.id, query, 6, 0.55);
 
   return NextResponse.json({ memories: hits.map((h) => h.memory) });
 }

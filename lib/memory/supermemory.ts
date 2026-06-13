@@ -72,11 +72,17 @@ export async function rememberAboutPatient(
 /**
  * Recall what we know about a patient relevant to `query`. Returns [] when
  * memory is disabled. Use this to personalize a call ("last time you mentioned…").
+ *
+ * `threshold` controls precision (0–1, higher = stricter):
+ *  - ~0.3 for a WIDE context dump at call start (cast a net for anything useful)
+ *  - ~0.55 for a TARGETED live lookup ("do you remember X?") so unrelated
+ *    queries correctly return nothing and the agent can admit it doesn't know.
  */
 export async function recallAboutPatient(
   patientId: string,
   query: string,
   limit = 5,
+  threshold = 0.3,
 ): Promise<MemoryHit[]> {
   if (!isMemoryEnabled()) return [];
 
@@ -90,9 +96,7 @@ export async function recallAboutPatient(
       q: query,
       containerTag: patientContainerTag(patientId),
       limit,
-      // Memento memories tend to score ~0.6–0.75; the API default of 0.6 is too
-      // strict and drops useful recalls. Cast a wider net.
-      threshold: 0.3,
+      threshold,
     }),
   });
 
