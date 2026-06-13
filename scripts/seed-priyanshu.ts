@@ -1,5 +1,5 @@
 /**
- * Seed script: Priyanshu (425-560-6921).
+ * Seed script: a demo patient's history.
  *
  * Populates a realistic demo history for one patient:
  *   1. Upserts the user (so phone → stable patient id resolves on the dashboard).
@@ -10,17 +10,31 @@
  *      senile man — life details plus the kind of forgetful moments a daily
  *      check-in would accumulate over months.
  *
- * Run:  bun run scripts/seed-priyanshu.ts
+ * Run (defaults to Priyanshu):
+ *   bun run scripts/seed-priyanshu.ts
+ * Or for another patient, pass name + phone:
+ *   bun run scripts/seed-priyanshu.ts "Andrew" "7789030066"
  * (bun auto-loads .env.local, so DATABASE_URL + SUPERMEMORY_* are available.)
  */
 
 import { kpis, users } from "../lib/db";
 import { rememberAboutPatient } from "../lib/memory/supermemory";
 
-// What the user signs up with on the /phone screen must match this exactly so
-// the dashboard resolves to the same patient. The phone input prepends "+1".
-const PHONE = "+14255606921";
-const NAME = "Priyanshu";
+// Name + phone come from CLI args, defaulting to Priyanshu. The phone input on
+// the /phone screen prepends "+1", so we normalize a 10-digit number the same
+// way here and store the exact value the dashboard will look up.
+const argName = process.argv[2]?.trim();
+const argPhone = process.argv[3]?.trim();
+
+function normalizePhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (raw.startsWith("+")) return `+${digits}`;
+  // 10-digit US number → prefix +1 (matches the /phone input behaviour).
+  return digits.length === 10 ? `+1${digits}` : `+${digits}`;
+}
+
+const NAME = argName || "Priyanshu";
+const PHONE = normalizePhone(argPhone || "4255606921");
 const DAYS = 90;
 
 // ── Deterministic RNG so re-running produces the same history ────────────────
@@ -173,9 +187,9 @@ async function seedKpis(patientId: string) {
 
 // ── Long-term memories: an elderly, somewhat senile man ──────────────────────
 const MEMORIES: string[] = [
-  "Priyanshu is 78 and lives on his own in a small house with a garden. He was a high-school mathematics teacher for over thirty years and still likes explaining little number puzzles.",
+  `${NAME} is 78 and lives on his own in a small house with a garden. He was a high-school mathematics teacher for over thirty years and still likes explaining little number puzzles.`,
   "His late wife was named Meera; she passed a few years ago. He speaks about her warmly and sometimes, mid-conversation, talks as if she is still in the next room.",
-  "He has a son, Arjun, who lives a couple of hours away and visits on weekends. Priyanshu occasionally calls Arjun by his younger brother's name, Vinod, and then corrects himself with a laugh.",
+  `He has a son, Arjun, who lives a couple of hours away and visits on weekends. ${NAME} occasionally calls Arjun by his younger brother's name, Vinod, and then corrects himself with a laugh.`,
   "He keeps a tabby cat named Simba who sleeps on the windowsill. The cat is one of his favourite things to talk about.",
   "He loves cricket and old Hindi film songs from the 1960s and 70s. He can sing long stretches of lyrics from decades ago even on days he struggles with recent events.",
   "He grows tomatoes and chillies in his back garden and is proud of them, though lately he sometimes forgets whether he has watered them and waters twice.",
