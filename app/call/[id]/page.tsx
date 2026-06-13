@@ -5,9 +5,11 @@ import {
   BrainCircuit,
   CheckCircle2,
   EarOff,
+  ListChecks,
   Loader2,
   MessageSquare,
   Mic,
+  MicOff,
   PhoneOff,
   Send,
   Sparkles,
@@ -203,6 +205,23 @@ function DebugEventRow({ event }: { event: DebugEvent }) {
     );
   }
 
+  if (event.kind === "agenda") {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2">
+        <ListChecks className="mt-0.5 size-3.5 shrink-0 text-sky-600" />
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[11px] font-semibold text-sky-700 dark:text-sky-500">
+            Agenda beat: {event.beat} (silent)
+          </span>
+          <span className="text-xs text-foreground">{event.text}</span>
+        </div>
+        <span className="ml-auto text-[11px] text-muted-foreground">
+          {shortTime(event.at)}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-background px-3 py-2">
       <div className="flex items-center gap-2 text-xs">
@@ -347,6 +366,8 @@ function PersonaCenter({
   disconnect,
   toolActivity,
   error,
+  muted,
+  toggleMute,
 }: {
   status: VoiceStatus;
   isLive: boolean;
@@ -354,6 +375,8 @@ function PersonaCenter({
   disconnect: () => void;
   toolActivity: string | null;
   error: string | null;
+  muted: boolean;
+  toggleMute: () => void;
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-6 min-h-0 flex-1">
@@ -374,10 +397,21 @@ function PersonaCenter({
             {status === "connecting" ? "Connecting" : "Start call"}
           </Button>
         ) : (
-          <Button size="lg" variant="destructive" onClick={disconnect}>
-            <PhoneOff />
-            End call
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="lg"
+              variant={muted ? "default" : "outline"}
+              onClick={toggleMute}
+              aria-pressed={muted}
+            >
+              {muted ? <MicOff /> : <Mic />}
+              {muted ? "Muted" : "Mute"}
+            </Button>
+            <Button size="lg" variant="destructive" onClick={disconnect}>
+              <PhoneOff />
+              End call
+            </Button>
+          </div>
         )}
 
         <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status]}</Badge>
@@ -406,8 +440,10 @@ export default function CallPage() {
     transcript,
     toolActivity,
     debugEvents,
+    muted,
     connect,
     disconnect,
+    toggleMute,
     sendGuidance,
   } = useGrokVoice();
   const isLive = status === "listening" || status === "speaking";
@@ -429,6 +465,8 @@ export default function CallPage() {
           disconnect={disconnect}
           toolActivity={toolActivity}
           error={error}
+          muted={muted}
+          toggleMute={toggleMute}
         />
 
         <div className="flex min-h-0 flex-col gap-2">
@@ -450,6 +488,8 @@ export default function CallPage() {
               disconnect={disconnect}
               toolActivity={toolActivity}
               error={error}
+              muted={muted}
+              toggleMute={toggleMute}
             />
           )}
           {mobileTab === "transcript" && (

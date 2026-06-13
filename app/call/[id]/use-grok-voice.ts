@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { storage } from "@/lib/storage";
+import type { AgendaBeat } from "@/lib/voice/call-agenda";
 import { buildCallInstructions } from "@/lib/voice/call-flow";
 import { DEMO_PATIENT } from "@/lib/voice/patient-profile";
 import { base64PCM16ToInt16, float32ToBase64PCM16 } from "@/lib/voice/pcm";
@@ -11,6 +12,15 @@ import { runClientTool, voiceTools } from "@/lib/voice/tools";
 const SAMPLE_RATE = 24000;
 const MODEL = "grok-voice-think-fast-1.1";
 const REALTIME_URL = `wss://api.x.ai/v1/realtime?model=${MODEL}`;
+
+// Assessment-agenda pacing. Cora advances through the ordered clinical beats
+// (see lib/voice/call-agenda.ts) on her own during natural lulls, so the call
+// keeps moving instead of stalling in open-ended small talk.
+//  - WARMUP: assistant turns of pure warmth before the first beat is injected.
+//  - SPACING: minimum assistant turns between injected beats, so each probe is
+//    followed by a free conversational turn (probe, react, probe, react…).
+const AGENDA_WARMUP_TURNS = 1;
+const AGENDA_TURN_SPACING = 2;
 
 // Fallback instructions (no memory) if the server doesn't return personalized
 // ones. Normally /api/realtime-token returns memory-enriched instructions.
@@ -53,6 +63,13 @@ export type DebugEvent =
       kind: "guidance";
       at: number;
       text: string;
+    }
+  | {
+      id: string;
+      kind: "agenda";
+      at: number;
+      beat: string;
+      text: string;
     };
 
 type ServerEvent = {
@@ -66,6 +83,10 @@ export function useGrokVoice() {
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [toolActivity, setToolActivity] = useState<string | null>(null);
   const [debugEvents, setDebugEvents] = useState<DebugEvent[]>([]);
+  // When muted, we stop forwarding mic frames to the realtime API entirely, so
+  // nothing the patient says is sent or transcribed until they unmute.
+  const [muted, setMuted] = useState(false);
+  const mutedRef = useRef(false);
 
   const pushDebug = useCallback((e: DebugEvent) => {
     setDebugEvents((prev) => [...prev, e]);
@@ -109,6 +130,16 @@ export function useGrokVoice() {
   // proactively prompt Cora to weave them in (during a lull or after she
   // finishes her current turn).
   const pendingGuidanceRef = useRef<string[]>([]);
+  // The ordered assessment agenda for this call (empty for the intro call). The
+  // driver walks it during lulls so the conversation reliably progresses
+  // through the clinical beats in the right order instead of stalling.
+  const agendaRef = useRef<AgendaBeat[]>([]);
+  // Index of the next agenda beat to inject.
+  const agendaIndexRef = useRef(0);
+  // Count of completed assistant turns, used to pace the agenda.
+  const assistantTurnsRef = useRef(0);
+  // The assistant-turn count at which we last injected an agenda beat.
+  const lastProbeTurnRef = useRef(0);
   // The user's current turn. `grok-transcribe` sends CUMULATIVE transcripts
   // per conversation item (each update may restate/correct the whole item), so
   // we key by item id and REPLACE within an item, then join distinct items in
@@ -204,6 +235,15 @@ export function useGrokVoice() {
     }
   }, []);
 
+  /** Toggle the mic. While muted, no audio frames reach the realtime API. */
+  const toggleMute = useCallback(() => {
+    setMuted((prev) => {
+      const next = !prev;
+      mutedRef.current = next;
+      return next;
+    });
+  }, []);
+
   /**
    * Inject a private CARE-TEAM guidance note (e.g. from a caretaker). It is
    * added to the conversation as silent context (never spoken, never revealed),
@@ -216,10 +256,10 @@ export function useGrokVoice() {
    */
   const maybeFlushGuidance = useCallback(() => {
     const notes = pendingGuidanceRef.current;
-    if (notes.length === 0) return;
+    if (notes.length === 0) return false;
     // Don't barge in while Cora is talking or the patient is mid-sentence —
     // those moments resolve and call us again (response.done / speech_stopped).
-    if (speakingRef.current || userSpeakingRef.current) return;
+    if (speakingRef.current || userSpeakingRef.current) return false;
 
     pendingGuidanceRef.current = [];
     const joined = notes.join(" Also: ");
@@ -229,7 +269,54 @@ export function useGrokVoice() {
         instructions: `A private care-team note just came in: "${joined}". In your VERY NEXT thing you say, naturally and warmly act on it in your own words — gently steer the conversation that way now. Do NOT read the note aloud, do NOT mention a note or anyone else, and do NOT ask permission — just bring it up as your own friendly curiosity, in one short, natural turn.`,
       },
     });
+    return true;
   }, [send]);
+
+  /**
+   * Advance the assessment agenda. When Cora has just gone idle and the patient
+   * isn't mid-sentence, and enough warm turns have passed since the last probe,
+   * we inject the next ordered beat as a SILENT private cue (never spoken). It
+   * rides Cora's next reply, so the call keeps progressing through the clinical
+   * beats in order instead of drifting in small talk. Care-team guidance always
+   * takes priority over the agenda.
+   */
+  const maybeAdvanceAgenda = useCallback(() => {
+    const beats = agendaRef.current;
+    if (agendaIndexRef.current >= beats.length) return;
+    // Don't inject while anyone's talking, or while a care-team note is pending.
+    if (speakingRef.current || userSpeakingRef.current) return;
+    if (pendingGuidanceRef.current.length > 0) return;
+    // Pace it: a warm opening, then a free conversational turn between probes.
+    const turns = assistantTurnsRef.current;
+    if (turns < AGENDA_WARMUP_TURNS) return;
+    if (turns - lastProbeTurnRef.current < AGENDA_TURN_SPACING) return;
+
+    const beat = beats[agendaIndexRef.current];
+    agendaIndexRef.current += 1;
+    lastProbeTurnRef.current = turns;
+
+    // Inject as silent context so it shapes Cora's NEXT turn (no barge-in).
+    send({
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: `[[NEXT FOCUS — private, not spoken by the patient, never read aloud or acknowledged]] ${beat.instruction} [[END NOTE]]`,
+          },
+        ],
+      },
+    });
+    pushDebug({
+      id: crypto.randomUUID(),
+      kind: "agenda",
+      at: Date.now(),
+      beat: beat.id,
+      text: beat.instruction,
+    });
+  }, [pushDebug, send]);
 
   const sendGuidance = useCallback(
     (text: string) => {
@@ -450,9 +537,13 @@ export function useGrokVoice() {
             send({ type: "response.create" });
           } else {
             setStatus("listening");
-            // Now that Cora's idle, act on any care-team guidance that arrived
-            // while she was speaking.
-            maybeFlushGuidance();
+            // Cora's idle and this was a real spoken turn. Count it for agenda
+            // pacing, then act on any care-team guidance that arrived while she
+            // was speaking. If no guidance fired, advance the assessment agenda
+            // so the conversation keeps moving toward the next clinical beat.
+            assistantTurnsRef.current += 1;
+            const guidanceFired = maybeFlushGuidance();
+            if (!guidanceFired) maybeAdvanceAgenda();
           }
           break;
         }
@@ -465,6 +556,7 @@ export function useGrokVoice() {
       finalizeStreaming,
       finalizeUserTurn,
       handleFunctionCall,
+      maybeAdvanceAgenda,
       maybeFlushGuidance,
       renderUserTurn,
       send,
@@ -519,7 +611,13 @@ export function useGrokVoice() {
     speakingRef.current = false;
     userSpeakingRef.current = false;
     pendingGuidanceRef.current = [];
+    agendaRef.current = [];
+    agendaIndexRef.current = 0;
+    assistantTurnsRef.current = 0;
+    lastProbeTurnRef.current = 0;
     userItemsRef.current = new Map();
+    mutedRef.current = false;
+    setMuted(false);
     setToolActivity(null);
     setStatus("idle");
   }, [pollForKpis]);
@@ -594,11 +692,17 @@ export function useGrokVoice() {
         const body = await tokenRes.json().catch(() => ({}));
         throw new Error(body.error ?? "Failed to get realtime token");
       }
-      const { value: token, instructions } = (await tokenRes.json()) as {
+      const { value: token, instructions, agenda } = (await tokenRes.json()) as {
         value: string;
         instructions?: string;
+        agenda?: AgendaBeat[];
       };
       instructionsRef.current = instructions ?? FALLBACK_INSTRUCTIONS;
+      // Load the ordered assessment agenda and reset its pacing counters.
+      agendaRef.current = agenda ?? [];
+      agendaIndexRef.current = 0;
+      assistantTurnsRef.current = 0;
+      lastProbeTurnRef.current = 0;
 
       // 2. Set up audio (single context for capture + playback at 24kHz).
       const audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
@@ -623,6 +727,8 @@ export function useGrokVoice() {
       processor.onaudioprocess = (e) => {
         const ws = wsRef.current;
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        // Muted: drop the frame so no audio reaches the realtime API.
+        if (mutedRef.current) return;
         const input = e.inputBuffer.getChannelData(0);
         ws.send(
           JSON.stringify({
@@ -716,8 +822,10 @@ export function useGrokVoice() {
     transcript,
     toolActivity,
     debugEvents,
+    muted,
     connect,
     disconnect,
+    toggleMute,
     sendGuidance,
   };
 }
