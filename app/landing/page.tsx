@@ -22,7 +22,7 @@ function Corner({ className }: { className?: string }) {
 
 export default function LandingPage() {
   return (
-    <div className="relative h-dvh w-full overflow-hidden bg-black text-white [--landing-gutter:clamp(1.25rem,4vw,3.5rem)]">
+    <div className="relative h-dvh w-full overflow-hidden bg-black text-white [--landing-gutter:clamp(1.875rem,5vw,3.5rem)]">
       <Image
         src="/backgrounds/background.png"
         alt=""
@@ -41,7 +41,7 @@ export default function LandingPage() {
         }}
       >
         <Corner className="h-[var(--landing-gutter)] border-r border-b border-white/8" />
-        <header className="flex h-[var(--landing-gutter)] items-center border-b border-white/8 px-6 sm:px-10">
+        <header className="flex h-[var(--landing-gutter)] items-center justify-center sm:justify-start border-b border-white/8 px-8 sm:px-10">
           <MementoLogo />
         </header>
         <Corner className="h-[var(--landing-gutter)] border-b border-l border-white/8" />
