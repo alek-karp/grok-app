@@ -11,8 +11,9 @@ const SAMPLE_RATE = 24000;
 const MODEL = "grok-voice-think-fast-1.1";
 const REALTIME_URL = `wss://api.x.ai/v1/realtime?model=${MODEL}`;
 
-// The Memento daily check-in call flow, personalized to the demo patient.
-const SYSTEM_INSTRUCTIONS = buildCallInstructions(DEMO_PATIENT);
+// Fallback instructions (no memory) if the server doesn't return personalized
+// ones. Normally /api/realtime-token returns memory-enriched instructions.
+const FALLBACK_INSTRUCTIONS = buildCallInstructions(DEMO_PATIENT);
 
 export type VoiceStatus =
   | "idle"
@@ -39,6 +40,12 @@ export function useGrokVoice() {
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [toolActivity, setToolActivity] = useState<string | null>(null);
 
+  // Keep a ref mirror of the transcript for the disconnect handler.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: ref sync only
+  useEffect(() => {
+    transcriptRef.current = transcript;
+  }, [transcript]);
+
   const wsRef = useRef<WebSocket | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const playerRef = useRef<PCMPlayer | null>(null);
@@ -54,11 +61,20 @@ export function useGrokVoice() {
   // when a user's turn is truly finished: their bubble is only finalized once
   // the assistant starts replying, so mid-sentence pauses don't split it.
   const speakingRef = useRef(false);
-  // The user's current turn, accumulated across VAD segments so brief pauses
-  // don't spawn multiple bubbles. `userSegmentsRef` holds completed segments;
-  // `userLiveRef` holds the in-progress (cumulative) segment.
-  const userSegmentsRef = useRef<string[]>([]);
-  const userLiveRef = useRef("");
+  // The user's current turn. `grok-transcribe` sends CUMULATIVE transcripts
+  // per conversation item (each update may restate/correct the whole item), so
+  // we key by item id and REPLACE within an item, then join distinct items in
+  // order. This avoids the "I had my tea... I had my tea and toast..." pile-up
+  // from naively concatenating cumulative updates.
+  const userItemsRef = useRef<Map<string, string>>(new Map());
+
+  // Memory wiring. `instructionsRef` holds the (memory-enriched) system prompt
+  // returned by the server. `transcriptRef` mirrors transcript state so the
+  // disconnect handler can read the final turns. `callActiveRef` guards against
+  // storing the same call twice (End click + ws.onclose both call disconnect).
+  const instructionsRef = useRef<string>(FALLBACK_INSTRUCTIONS);
+  const transcriptRef = useRef<TranscriptEntry[]>([]);
+  const callActiveRef = useRef(false);
 
   const upsertStreaming = useCallback(
     (role: "user" | "assistant", text: string) => {
@@ -106,10 +122,10 @@ export function useGrokVoice() {
     [],
   );
 
-  // The full text of the user's current turn (completed segments + live one).
+  // The full text of the user's current turn: distinct items joined in order.
   const renderUserTurn = useCallback(
     () =>
-      [...userSegmentsRef.current, userLiveRef.current]
+      [...userItemsRef.current.values()]
         .map((s) => s.trim())
         .filter(Boolean)
         .join(" "),
@@ -120,8 +136,7 @@ export function useGrokVoice() {
   // accumulators for the next turn.
   const finalizeUserTurn = useCallback(() => {
     const text = renderUserTurn();
-    userSegmentsRef.current = [];
-    userLiveRef.current = "";
+    userItemsRef.current = new Map();
     if (text) finalizeStreaming("user", text);
   }, [finalizeStreaming, renderUserTurn]);
 
@@ -187,21 +202,22 @@ export function useGrokVoice() {
         }
 
         case "conversation.item.input_audio_transcription.updated": {
-          // Live partial transcript for the current segment. Ignore anything
-          // arriving after the assistant has already started replying.
+          // Live cumulative transcript for one item. Ignore anything arriving
+          // after the assistant has already started replying.
           if (speakingRef.current) break;
-          userLiveRef.current = String(event.transcript ?? "");
+          const itemId = String(event.item_id ?? "current");
+          userItemsRef.current.set(itemId, String(event.transcript ?? ""));
           upsertStreaming("user", renderUserTurn());
           break;
         }
 
         case "conversation.item.input_audio_transcription.completed": {
-          // A segment finished (VAD detected a pause). Roll it into the turn
-          // but DON'T finalize the bubble — the user may still be talking.
+          // The item's final cumulative transcript. Replace (don't append) so
+          // corrections to earlier partials don't duplicate. DON'T finalize the
+          // bubble yet — the user may continue with a new item after a pause.
           if (speakingRef.current) break;
-          const segment = String(event.transcript ?? "").trim();
-          if (segment) userSegmentsRef.current.push(segment);
-          userLiveRef.current = "";
+          const itemId = String(event.item_id ?? "current");
+          userItemsRef.current.set(itemId, String(event.transcript ?? ""));
           upsertStreaming("user", renderUserTurn());
           break;
         }
@@ -279,6 +295,22 @@ export function useGrokVoice() {
   );
 
   const disconnect = useCallback(() => {
+    // If a call was active, persist the transcript to long-term memory before
+    // tearing down. Guarded so End-click + ws.onclose don't store twice.
+    if (callActiveRef.current) {
+      callActiveRef.current = false;
+      const turns = transcriptRef.current
+        .filter((t) => t.text.trim().length > 0)
+        .map((t) => ({ role: t.role, text: t.text }));
+      if (turns.some((t) => t.role === "user")) {
+        void fetch("/api/remember", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ patientId: DEMO_PATIENT.id, turns }),
+        }).catch(() => {});
+      }
+    }
+
     processorRef.current?.disconnect();
     processorRef.current = null;
     sourceRef.current?.disconnect();
@@ -299,8 +331,7 @@ export function useGrokVoice() {
     assistantTextRef.current = "";
     pendingToolsRef.current = [];
     speakingRef.current = false;
-    userSegmentsRef.current = [];
-    userLiveRef.current = "";
+    userItemsRef.current = new Map();
     setToolActivity(null);
     setStatus("idle");
   }, []);
@@ -312,13 +343,22 @@ export function useGrokVoice() {
     setStatus("connecting");
 
     try {
-      // 1. Mint an ephemeral token from our server.
-      const tokenRes = await fetch("/api/realtime-token", { method: "POST" });
+      // 1. Start the call: mint an ephemeral token AND get memory-personalized
+      //    instructions, both built server-side (keys never reach the browser).
+      const tokenRes = await fetch("/api/realtime-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patientId: DEMO_PATIENT.id }),
+      });
       if (!tokenRes.ok) {
         const body = await tokenRes.json().catch(() => ({}));
         throw new Error(body.error ?? "Failed to get realtime token");
       }
-      const { value: token } = (await tokenRes.json()) as { value: string };
+      const { value: token, instructions } = (await tokenRes.json()) as {
+        value: string;
+        instructions?: string;
+      };
+      instructionsRef.current = instructions ?? FALLBACK_INSTRUCTIONS;
 
       // 2. Set up audio (single context for capture + playback at 24kHz).
       const audioCtx = new AudioContext({ sampleRate: SAMPLE_RATE });
@@ -360,12 +400,13 @@ export function useGrokVoice() {
       // ephemeral token rides in the subprotocol with the required prefix.
       const ws = new WebSocket(REALTIME_URL, [`xai-client-secret.${token}`]);
       wsRef.current = ws;
+      callActiveRef.current = true;
 
       ws.onopen = () => {
         send({
           type: "session.update",
           session: {
-            instructions: SYSTEM_INSTRUCTIONS,
+            instructions: instructionsRef.current,
             // Warm, friendly tone — gentler than the upbeat default for an
             // older person.
             voice: "ara",

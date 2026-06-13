@@ -7,6 +7,8 @@
  */
 
 export type PatientProfile = {
+  /** Stable id used to key this patient's long-term memory (supermemory). */
+  id: string;
   /** Preferred name the agent uses out loud. */
   preferredName: string;
   /** The agent's own name — a familiar, recurring companion. */
@@ -42,6 +44,7 @@ export type PatientProfile = {
 };
 
 export const DEMO_PATIENT: PatientProfile = {
+  id: "mary-demo",
   preferredName: "Mary",
   companionName: "Cora",
   age: 76,

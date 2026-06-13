@@ -88,6 +88,9 @@ export async function recallAboutPatient(
       q: query,
       containerTag: patientContainerTag(patientId),
       limit,
+      // Memento memories tend to score ~0.6–0.75; the API default of 0.6 is too
+      // strict and drops useful recalls. Cast a wider net.
+      threshold: 0.3,
     }),
   });
 

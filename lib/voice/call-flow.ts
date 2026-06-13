@@ -11,12 +11,27 @@ import type { PatientProfile } from "./patient-profile";
  *
  * This file is intentionally just the conversation design — no scoring, no DB,
  * no extraction. That happens later, off the transcript.
+ *
+ * `memories` are recalled from supermemory (past calls). When present they make
+ * the call feel continuous — Cora "remembers" what Mary told her before.
  */
-export function buildCallInstructions(p: PatientProfile): string {
+export function buildCallInstructions(
+  p: PatientProfile,
+  memories: string[] = [],
+): string {
   const { preferredName: name, companionName, routine, careCircle } = p;
   const interests = p.interests.join(", ");
   const story = p.plantedStory;
   const [w1, w2, w3] = p.recallWords;
+
+  const memoryBlock =
+    memories.length > 0
+      ? [
+          `## What you remember from past calls with ${name}`,
+          `These are things ${name} has told you before. Weave them in naturally and warmly, the way a friend brings up something you mentioned last time. Reference them gently ("how did Tom's game go?"); never read them as a list or say you "have notes". If something here conflicts with what she says today, trust today.`,
+          ...memories.map((m) => `- ${m}`),
+        ].join("\n")
+      : "";
 
   return [
     `You are ${companionName}, a warm, familiar friend who phones ${name} (age ${p.age}) most mornings just to see how she's doing. ${name} lives on her own and looks forward to your calls. You genuinely care about her. You are NOT a clinician, a test, or an assistant running through a script — you are good company.`,
@@ -39,7 +54,11 @@ export function buildCallInstructions(p: PatientProfile): string {
     `- Mornings: wakes ${routine.wakeTime}, usually has ${routine.breakfastHabit}, takes a ${routine.medication}.`,
     `- Close to her: ${careCircle.caregiver}, and her doctor ${careCircle.clinician}.`,
     `- Loves: ${interests}.`,
-    `- Last time you spoke she mentioned ${p.lastCallThread}.`,
+    memories.length > 0
+      ? `- You've spoken before — see your memories of past calls below and build on them.`
+      : `- Last time you spoke she mentioned ${p.lastCallThread}.`,
+
+    memoryBlock,
 
     `## How the call tends to go`,
     `Let this unfold like ONE natural conversation, not a checklist. Use whatever she says as the bridge to whatever comes next. If she takes the chat somewhere lovely, follow her there and weave the rest in later. Wording is yours; these are gentle intentions, not a script to read.`,
@@ -69,5 +88,7 @@ export function buildCallInstructions(p: PatientProfile): string {
     `- If she's tired or wants to go, wrap up kindly and early — warmly, not abruptly.`,
     `- Stay fully in the caring-friend role. You're a supportive check-in, never a medical diagnosis.`,
     `- Everything is spoken aloud — talk like a person, not like text being read.`,
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
