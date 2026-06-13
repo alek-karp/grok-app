@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { rememberAboutPatient } from "@/lib/memory/supermemory";
+import { processCall } from "@/lib/pipeline/process-call";
 import { resolvePatientProfile } from "@/lib/voice/resolve-patient";
 
 export const dynamic = "force-dynamic";
@@ -7,9 +8,12 @@ export const dynamic = "force-dynamic";
 type Turn = { role: "user" | "assistant"; text: string };
 
 /**
- * Stores a finished call's transcript into the patient's long-term memory.
- * Supermemory extracts atomic memories from the text automatically, so we just
- * hand it a clean, labelled transcript. No-op when memory is disabled.
+ * Called when a call ends. Does two things with the transcript:
+ *  1. Stores it in long-term memory (supermemory) for future personalization.
+ *  2. Kicks off the KPI extraction pipeline in the BACKGROUND (Next `after()`),
+ *     which writes a row to `kpi_results` for the dashboards. This runs after
+ *     the response is sent, so the client isn't blocked on it. The pipeline is
+ *     a pure function (`processCall`) so it can move to Inngest later unchanged.
  *
  * Body: { phone?: string, patientId?: string, name?: string, turns: { role, text }[] }
  */
@@ -64,6 +68,23 @@ export async function POST(request: Request) {
   const result = await rememberAboutPatient(patient.id, content, {
     kind: "call_transcript",
     date,
+  });
+
+  // Extract cognitive KPIs in the background and write them to the DB for the
+  // dashboards. Runs after the response is flushed; failures are logged, never
+  // surfaced to the caller.
+  after(async () => {
+    try {
+      await processCall({
+        patientId: patient.id,
+        patientName: name,
+        companionName: companion,
+        turns,
+        callDate: date,
+      });
+    } catch (err) {
+      console.error("[remember] KPI pipeline failed:", err);
+    }
   });
 
   return NextResponse.json(result);
