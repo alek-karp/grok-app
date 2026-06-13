@@ -119,16 +119,9 @@ export default function PhonePage() {
 
   return (
     <div className="mx-auto flex h-[calc(100svh-3.5rem)] w-full min-h-0 max-w-2xl flex-col gap-4 px-4 py-6">
-      <header className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight">Phone</h1>
-          <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status]}</Badge>
-        </div>
-        <p className="text-sm text-muted-foreground">
-          A continuous voice conversation with Cora. Speak naturally — she waits
-          until you’ve finished before replying, and you can talk over her to
-          interrupt. Use headphones for the cleanest experience.
-        </p>
+      <header className="flex items-center justify-between">
+        <h1 className="text-2xl font-semibold tracking-tight">Phone</h1>
+        <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status]}</Badge>
       </header>
 
       <div className="flex items-center gap-3">
@@ -170,9 +163,7 @@ export default function PhonePage() {
         <ConversationContent className="gap-3">
           {transcript.length === 0 ? (
             <p className="m-auto text-sm text-muted-foreground">
-              {isLive
-                ? "Say hello to get started…"
-                : "Transcript will appear here once the call starts."}
+              {isLive ? "Listening…" : "Start a call to begin."}
             </p>
           ) : (
             transcript.map((entry) => (
@@ -182,10 +173,6 @@ export default function PhonePage() {
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
-
-      <p className="text-xs text-muted-foreground">
-        Proof-of-concept demo, not a medical device.
-      </p>
     </div>
   );
 }

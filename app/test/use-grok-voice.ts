@@ -73,9 +73,15 @@ export function useGrokVoice() {
   // returned by the server. `transcriptRef` mirrors transcript state so the
   // disconnect handler can read the final turns. `callActiveRef` guards against
   // storing the same call twice (End click + ws.onclose both call disconnect).
+  // `identityRef` carries the signed-up phone/name so live tools (recall) can
+  // scope to the right person.
   const instructionsRef = useRef<string>(FALLBACK_INSTRUCTIONS);
   const transcriptRef = useRef<TranscriptEntry[]>([]);
   const callActiveRef = useRef(false);
+  const identityRef = useRef<{ phone: string; name: string }>({
+    phone: "",
+    name: "",
+  });
 
   const upsertStreaming = useCallback(
     (role: "user" | "assistant", text: string) => {
@@ -162,7 +168,7 @@ export function useGrokVoice() {
       setToolActivity(`Calling ${name}…`);
       let result: unknown;
       try {
-        result = await runClientTool(name, args);
+        result = await runClientTool(name, args, identityRef.current);
       } catch (err) {
         result = { error: err instanceof Error ? err.message : String(err) };
       }
@@ -308,8 +314,8 @@ export function useGrokVoice() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            phone: storage.getPhone(),
-            name: storage.getName(),
+            phone: identityRef.current.phone,
+            name: identityRef.current.name,
             turns,
           }),
         }).catch(() => {});
@@ -348,6 +354,12 @@ export function useGrokVoice() {
     setStatus("connecting");
 
     try {
+      // Capture identity for this call (used by server routes + live tools).
+      identityRef.current = {
+        phone: storage.getPhone(),
+        name: storage.getName(),
+      };
+
       // 1. Start the call: mint an ephemeral token AND get memory-personalized
       //    instructions, both built server-side (keys never reach the browser).
       //    We send the real signed-up identity so the call uses their DB name.
@@ -355,8 +367,8 @@ export function useGrokVoice() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          phone: storage.getPhone(),
-          name: storage.getName(),
+          phone: identityRef.current.phone,
+          name: identityRef.current.name,
         }),
       });
       if (!tokenRes.ok) {
