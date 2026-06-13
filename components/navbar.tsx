@@ -23,7 +23,7 @@ export function Navbar() {
           <CircleDotDashed className="size-5" style={{ animation: "memento-spin 10s ease-in-out infinite" }} />
           Memento
         </div>
-        <div className="absolute left-1/2 -translate-x-1/2">
+        <div className="absolute left-1/2 -translate-x-1/2 hidden sm:block">
           <Tabs value={pathname}>
             <TabsList>
               <TabsTrigger value={ROUTES.dashboard} asChild>
