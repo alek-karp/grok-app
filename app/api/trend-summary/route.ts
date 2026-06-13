@@ -1,3 +1,5 @@
+import { readFileSync } from "fs";
+import { join } from "path";
 import { NextResponse } from "next/server";
 import type { DashboardKpiEntry } from "@/lib/dashboard-kpi";
 
@@ -5,6 +7,16 @@ export const dynamic = "force-dynamic";
 
 const XAI_CHAT_URL = "https://api.x.ai/v1/chat/completions";
 const MODEL = "grok-4.3";
+
+function loadKnowledge(): string {
+  try {
+    return readFileSync(join(process.cwd(), "KNOWLEDGE.md"), "utf-8");
+  } catch {
+    return "";
+  }
+}
+
+const KNOWLEDGE = loadKnowledge();
 
 const SYSTEM_PROMPT = `You are a caring assistant helping family caregivers understand how their loved one with dementia is doing. You receive a summary of recent check-in calls and write a short, warm, plain-English update.
 
@@ -15,7 +27,12 @@ Rules:
 - Note the most recent call's mood and any concerns worth watching.
 - If there are safety flags, mention them gently but clearly.
 - Never use clinical terms like "verbal fluency score" or "temporal orientation" — say "naming animals" or "knowing today's date" instead.
-- End on a human note when the data allows it.`;
+- End on a human note when the data allows it.
+- Ground your observations in the clinical research context below when relevant, but never quote studies directly — use the research only to inform your framing.
+
+<research_context>
+${KNOWLEDGE}
+</research_context>`;
 
 function buildDigest(rows: DashboardKpiEntry[], patientName: string): string {
   if (rows.length === 0) return "No call data available.";
