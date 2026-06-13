@@ -137,7 +137,9 @@ function mockToDashboardEntry(entry: CallEntry): DashboardKpiEntry {
 
 function hasAnyValue(data: DashboardKpiEntry[], keys: NumericKpiKey[]) {
   return data.some((entry) =>
-    keys.some((key) => typeof entry[key] === "number"),
+    (keys as (keyof DashboardKpiEntry)[]).some(
+      (key) => typeof entry[key] === "number",
+    ),
   );
 }
 
@@ -225,72 +227,46 @@ function RecentCallPanel({
   count,
   loading,
   error,
+  trendSummary,
+  trendLoading,
 }: {
   latest: DashboardKpiEntry | undefined;
   count: number;
   loading: boolean;
   error: string | null;
+  trendSummary: string | null;
+  trendLoading: boolean;
 }) {
   return (
     <div className="flex min-h-0 flex-col rounded-xl border bg-card p-4 text-card-foreground shadow">
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold">Latest Extracted Call</h2>
+          <h2 className="text-sm font-semibold">Summary</h2>
           <p className="text-sm text-muted-foreground">
             {loading
               ? "Loading KPI history..."
               : latest
-                ? `${latest.date} from ${count} stored call${count === 1 ? "" : "s"}`
+                ? `${count} call${count === 1 ? "" : "s"} · last on ${latest.date}`
                 : "No stored KPI rows found"}
           </p>
         </div>
-        {error ? (
-          <Badge variant="destructive">DB unavailable</Badge>
-        ) : (
-          <Badge variant="secondary">{latest ? "Live DB" : "Waiting"}</Badge>
+        {error && (
+          <Badge variant="destructive">Unavailable</Badge>
         )}
       </div>
 
       {latest ? (
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">Mood: {latest.mood}</Badge>
-            <Badge variant="outline">
-              Medication: {latest.medicationAdherence}
-            </Badge>
-            {latest.sleepQuality && (
-              <Badge variant="outline">Sleep: {latest.sleepQuality}</Badge>
-            )}
-            <Badge variant={latest.safetyFlag ? "destructive" : "secondary"}>
-              {latest.safetyFlag ? "Safety flagged" : "No safety flag"}
-            </Badge>
-          </div>
-          <div>
-            <h3 className="text-sm font-medium">Summary</h3>
-            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-              {latest.summary || "No summary was stored for this call."}
-            </p>
-          </div>
-          <div>
-            <h3 className="text-sm font-medium">Observations</h3>
-            {latest.observations.length > 0 ? (
-              <ul className="mt-2 flex flex-col gap-2 text-sm text-muted-foreground">
-                {latest.observations.map((observation) => (
-                  <li
-                    key={observation}
-                    className="rounded-md bg-muted px-3 py-2"
-                  >
-                    {observation}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-1 text-sm text-muted-foreground">
-                No qualitative observations were stored for this call.
-              </p>
-            )}
-          </div>
-        </div>
+        trendLoading ? (
+          <p className="text-sm text-muted-foreground animate-pulse">
+            Analyzing call history…
+          </p>
+        ) : trendSummary ? (
+          <p className="text-sm leading-relaxed">{trendSummary}</p>
+        ) : (
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {latest.summary || "No summary available."}
+          </p>
+        )
       ) : (
         <div className="flex min-h-64 flex-1 items-center justify-center rounded-lg border border-dashed px-6 text-center text-sm text-muted-foreground">
           {loading
@@ -309,6 +285,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [storedName, setStoredName] = useState("");
+  const [trendSummary, setTrendSummary] = useState<string | null>(null);
+  const [trendLoading, setTrendLoading] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -361,6 +339,33 @@ export default function DashboardPage() {
     latest?.patientName ??
     (useMock ? "Mary Chen" : storedName || "Current patient");
   const patientDetail = useMock ? "76 - early MCI" : "Postgres KPI history";
+
+  useEffect(() => {
+    if (data.length === 0) {
+      setTrendSummary(null);
+      return;
+    }
+    let ignore = false;
+    setTrendLoading(true);
+    fetch("/api/trend-summary", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rows: data, patientName }),
+    })
+      .then((r) => r.json())
+      .then((d: { summary?: string | null }) => {
+        if (!ignore) setTrendSummary(d.summary ?? null);
+      })
+      .catch(() => {
+        if (!ignore) setTrendSummary(null);
+      })
+      .finally(() => {
+        if (!ignore) setTrendLoading(false);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [data, patientName]);
   const safetyFlagCount = data.filter((d) => d.safetyFlag).length;
   const medCurrent = latest?.medicationAdherence ?? "Not assessed";
   const moodCurrent = latest?.mood ?? "Not assessed";
@@ -418,6 +423,8 @@ export default function DashboardPage() {
             count={data.length}
             loading={!useMock && loading}
             error={!useMock ? error : null}
+            trendSummary={trendSummary}
+            trendLoading={trendLoading}
           />
         </TabsContent>
 
