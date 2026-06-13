@@ -66,8 +66,7 @@ export default function CaretakerPage() {
 
   return (
     <div className="flex flex-1 min-h-0 gap-4 px-8 py-4">
-      {/* Left panel */}
-      <div className="flex w-80 shrink-0 flex-col gap-4">
+<div className="flex w-80 shrink-0 flex-col gap-4">
         <div>
           <div className="mb-1 flex items-center gap-2">
             <UserRound className="size-5" />
@@ -128,8 +127,7 @@ export default function CaretakerPage() {
         </Card>
       </div>
 
-      {/* Right panel */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
+<div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
         <Card className="flex min-h-0 flex-1 flex-col">
           <CardHeader>
             <CardTitle>Sent notes</CardTitle>

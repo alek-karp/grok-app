@@ -110,8 +110,7 @@ export default function TranscriptsPage() {
 
   return (
     <main className="flex min-h-0 flex-1 overflow-hidden">
-      {/* List panel */}
-      <div className="flex w-80 shrink-0 flex-col border-r">
+<div className="flex w-80 shrink-0 flex-col border-r">
         <div className="shrink-0 border-b px-8 py-3">
           <h1 className="text-base font-semibold">Call Transcripts</h1>
           <p className="text-sm text-muted-foreground">
@@ -167,8 +166,7 @@ export default function TranscriptsPage() {
         </ScrollArea>
       </div>
 
-      {/* Detail panel */}
-      <div className="flex min-w-0 flex-1 flex-col">
+<div className="flex min-w-0 flex-1 flex-col">
         {!selectedId ? (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
             Select a call to preview the conversation.
