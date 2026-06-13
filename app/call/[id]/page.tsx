@@ -5,11 +5,13 @@ import {
   BrainCircuit,
   CheckCircle2,
   Loader2,
+  MessageSquare,
   Mic,
   PhoneOff,
+  Sparkles,
   Wrench,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Conversation,
   ConversationContent,
@@ -54,30 +56,12 @@ const VOICE_TO_PERSONA: Record<VoiceStatus, PersonaState> = {
   error: "idle",
 };
 
-function useTypewriter(target: string): string {
-  const countRef = useRef(0);
-  const targetRef = useRef(target);
-  targetRef.current = target;
-
-  useEffect(() => {
-    if (countRef.current > target.length) countRef.current = target.length;
-  }, [target]);
-
-  // We drive typewriter via a ref so it doesn't need state — callers that need
-  // re-renders can wrap in their own state if needed. For simplicity here we
-  // keep the simple useState approach.
-  return target; // instant — persona is the visual focus, not text animation
-}
+type MobileTab = "persona" | "transcript" | "debug";
 
 function MessageBubble({ entry }: { entry: TranscriptEntry }) {
   const isUser = entry.role === "user";
   return (
-    <div
-      className={cn(
-        "flex flex-col gap-1",
-        isUser ? "items-end" : "items-start",
-      )}
-    >
+    <div className={cn("flex flex-col gap-1", isUser ? "items-end" : "items-start")}>
       <span className="px-1 text-xs text-muted-foreground">
         {isUser ? "You" : "Cora"}
       </span>
@@ -224,51 +208,104 @@ function DebugEventRow({ event }: { event: DebugEvent }) {
   );
 }
 
-function TranscriptPanel({ transcript, isLive }: { transcript: TranscriptEntry[]; isLive: boolean }) {
+function TranscriptContent({ transcript, isLive }: { transcript: TranscriptEntry[]; isLive: boolean }) {
   return (
-    <div className="hidden md:flex min-h-0 flex-col gap-2">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">Transcript</p>
-      <Conversation className="min-h-0 flex-1 rounded-xl border border-border bg-muted/30">
-        <ConversationContent className="gap-3">
-          {transcript.length === 0 ? (
-            <p className="m-auto text-sm text-muted-foreground">
-              {isLive ? "Listening…" : "Start a call to begin."}
-            </p>
-          ) : (
-            transcript.map((entry) => (
-              <MessageBubble key={entry.id} entry={entry} />
-            ))
-          )}
-        </ConversationContent>
-        <ConversationScrollButton />
-      </Conversation>
-    </div>
+    <Conversation className="min-h-0 flex-1 rounded-xl border border-border bg-muted/30">
+      <ConversationContent className="gap-3">
+        {transcript.length === 0 ? (
+          <p className="m-auto text-sm text-muted-foreground">
+            {isLive ? "Listening…" : "Start a call to begin."}
+          </p>
+        ) : (
+          transcript.map((entry) => (
+            <MessageBubble key={entry.id} entry={entry} />
+          ))
+        )}
+      </ConversationContent>
+      <ConversationScrollButton />
+    </Conversation>
   );
 }
 
-function DebugPanel({ events }: { events: DebugEvent[] }) {
+function DebugContent({ events }: { events: DebugEvent[] }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [events]);
 
   return (
-    <div className="hidden md:flex min-h-0 flex-col gap-2">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">Debug</p>
-      <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-border bg-muted/20">
-        <div
-          ref={scrollRef}
-          className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3"
-        >
-          {events.length === 0 ? (
-            <p className="m-auto text-xs text-muted-foreground">
-              Tool calls and KPI extraction will appear here.
-            </p>
-          ) : (
-            events.map((e) => <DebugEventRow key={e.id} event={e} />)
-          )}
-        </div>
+    <div className="min-h-0 flex-1 flex flex-col rounded-xl border border-border bg-muted/20">
+      <div
+        ref={scrollRef}
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3"
+      >
+        {events.length === 0 ? (
+          <p className="m-auto text-xs text-muted-foreground">
+            Tool calls and KPI extraction will appear here.
+          </p>
+        ) : (
+          events.map((e) => <DebugEventRow key={e.id} event={e} />)
+        )}
       </div>
+    </div>
+  );
+}
+
+function PersonaCenter({
+  status,
+  isLive,
+  connect,
+  disconnect,
+  toolActivity,
+  error,
+}: {
+  status: VoiceStatus;
+  isLive: boolean;
+  connect: () => void;
+  disconnect: () => void;
+  toolActivity: string | null;
+  error: string | null;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-6 min-h-0 flex-1">
+      <Persona
+        className="size-64 md:size-80"
+        state={VOICE_TO_PERSONA[status]}
+        variant="halo"
+      />
+
+      <div className="flex flex-col items-center gap-3">
+        {!isLive ? (
+          <Button size="lg" onClick={connect} disabled={status === "connecting"}>
+            {status === "connecting" ? (
+              <Loader2 className="animate-spin" />
+            ) : (
+              <Mic />
+            )}
+            {status === "connecting" ? "Connecting" : "Start call"}
+          </Button>
+        ) : (
+          <Button size="lg" variant="destructive" onClick={disconnect}>
+            <PhoneOff />
+            End call
+          </Button>
+        )}
+
+        <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status]}</Badge>
+
+        {toolActivity ? (
+          <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Wrench className="size-3.5 animate-pulse" />
+            {toolActivity}
+          </span>
+        ) : null}
+      </div>
+
+      {error ? (
+        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive max-w-xs text-center">
+          {error}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -277,60 +314,82 @@ export default function CallPage() {
   const { status, error, transcript, toolActivity, debugEvents, connect, disconnect } =
     useGrokVoice();
   const isLive = status === "listening" || status === "speaking";
+  const [mobileTab, setMobileTab] = useState<MobileTab>("persona");
 
   return (
-    <div className="h-[calc(100svh-3.5rem)] grid grid-cols-1 md:grid-cols-3 gap-4 p-4 md:p-6">
-      {/* Left: transcript */}
-      <TranscriptPanel transcript={transcript} isLive={isLive} />
-
-      {/* Center: persona + controls */}
-      <div className="flex flex-col items-center justify-center gap-6">
-        <Persona
-          className="size-48 md:size-64"
-          state={VOICE_TO_PERSONA[status]}
-          variant="halo"
-        />
-
-        <div className="flex flex-col items-center gap-3">
-          {!isLive ? (
-            <Button
-              size="lg"
-              onClick={connect}
-              disabled={status === "connecting"}
-            >
-              {status === "connecting" ? (
-                <Loader2 className="animate-spin" />
-              ) : (
-                <Mic />
-              )}
-              {status === "connecting" ? "Connecting" : "Start call"}
-            </Button>
-          ) : (
-            <Button size="lg" variant="destructive" onClick={disconnect}>
-              <PhoneOff />
-              End call
-            </Button>
-          )}
-
-          <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status]}</Badge>
-
-          {toolActivity ? (
-            <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Wrench className="size-3.5 animate-pulse" />
-              {toolActivity}
-            </span>
-          ) : null}
+    <>
+      {/* ── Desktop: three-column layout ── */}
+      <div className="hidden md:grid md:grid-cols-3 md:gap-4 md:p-6 h-[calc(100svh-3.5rem)]">
+        <div className="flex min-h-0 flex-col gap-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">Transcript</p>
+          <TranscriptContent transcript={transcript} isLive={isLive} />
         </div>
 
-        {error ? (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive max-w-xs text-center">
-            {error}
-          </div>
-        ) : null}
+        <PersonaCenter
+          status={status}
+          isLive={isLive}
+          connect={connect}
+          disconnect={disconnect}
+          toolActivity={toolActivity}
+          error={error}
+        />
+
+        <div className="flex min-h-0 flex-col gap-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">Debug</p>
+          <DebugContent events={debugEvents} />
+        </div>
       </div>
 
-      {/* Right: debug */}
-      <DebugPanel events={debugEvents} />
-    </div>
+      {/* ── Mobile: tab-switched single column ── */}
+      <div className="flex md:hidden flex-col h-[calc(100svh-3.5rem)]">
+        {/* Tab content */}
+        <div className="flex min-h-0 flex-1 flex-col p-4 pb-0">
+          {mobileTab === "persona" && (
+            <PersonaCenter
+              status={status}
+              isLive={isLive}
+              connect={connect}
+              disconnect={disconnect}
+              toolActivity={toolActivity}
+              error={error}
+            />
+          )}
+          {mobileTab === "transcript" && (
+            <TranscriptContent transcript={transcript} isLive={isLive} />
+          )}
+          {mobileTab === "debug" && (
+            <DebugContent events={debugEvents} />
+          )}
+        </div>
+
+        {/* Bottom tab bar */}
+        <div className="shrink-0 border-t border-border bg-background">
+          <div className="grid grid-cols-3">
+            {(
+              [
+                { id: "persona", label: "Cora", icon: Sparkles },
+                { id: "transcript", label: "Transcript", icon: MessageSquare },
+                { id: "debug", label: "Debug", icon: Activity },
+              ] as const
+            ).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setMobileTab(id)}
+                className={cn(
+                  "flex flex-col items-center gap-1 py-3 text-xs transition-colors",
+                  mobileTab === id
+                    ? "text-foreground"
+                    : "text-muted-foreground",
+                )}
+              >
+                <Icon className={cn("size-5", mobileTab === id && "stroke-[2.5]")} />
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
