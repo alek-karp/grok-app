@@ -9,7 +9,7 @@ export function UserGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    if (pathname === "/phone") return;
+    if (pathname === "/phone" || pathname === "/landing") return;
     // The caretaker console runs on a separate device with no patient signup.
     if (pathname === "/caretaker") return;
     if (!storage.getPhone() || !storage.getName()) {

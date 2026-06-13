@@ -12,6 +12,10 @@ export function Navbar() {
   const pathname = usePathname()
   const router = useRouter()
 
+  if (pathname === ROUTES.landing) {
+    return null
+  }
+
   const startCall = () => {
     router.push(ROUTES.call(crypto.randomUUID()))
   }
