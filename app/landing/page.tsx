@@ -40,32 +40,31 @@ export default function LandingPage() {
           gridTemplateRows: "auto 1fr auto",
         }}
       >
-        <Corner className="h-[var(--landing-gutter)] border-r border-b border-white/15" />
-        <header className="flex h-[var(--landing-gutter)] items-center border-b border-white/15 px-6 sm:px-10">
+        <Corner className="h-[var(--landing-gutter)] border-r border-b border-white/8" />
+        <header className="flex h-[var(--landing-gutter)] items-center border-b border-white/8 px-6 sm:px-10">
           <MementoLogo />
         </header>
-        <Corner className="h-[var(--landing-gutter)] border-b border-l border-white/15" />
+        <Corner className="h-[var(--landing-gutter)] border-b border-l border-white/8" />
 
-        <div className="border-r border-white/15" aria-hidden="true" />
+        <div className="border-r border-white/8" aria-hidden="true" />
         <main className="relative flex flex-col items-center justify-center px-6 py-8 sm:px-10">
-          <div className="flex max-w-xl flex-col items-center gap-6 text-center">
-            <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl">
-              A daily voice companion for dementia care
+          <div className="flex max-w-2xl flex-col items-center gap-6 text-center">
+            <h1 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">
+              Daily check-ins that notice the changes families fear missing.
             </h1>
-            <p className="max-w-lg text-balance text-base leading-relaxed text-white/70 sm:text-lg">
-              Memento calls each morning, learns what normal looks like for you, and
-              helps you stay in control of your own care story.
+            <p className="max-w-lg text-balance text-sm leading-relaxed text-white/70 sm:text-base">
+              A warm morning call that learns your personal baseline — so you, your family, and your doctor stay ahead of changes, not behind them.
             </p>
             <Button asChild size="lg" className="mt-2 min-w-44">
               <Link href={ROUTES.phone}>Get started</Link>
             </Button>
           </div>
         </main>
-        <div className="border-l border-white/15" aria-hidden="true" />
+        <div className="border-l border-white/8" aria-hidden="true" />
 
-        <Corner className="h-[var(--landing-gutter)] border-r border-t border-white/15" />
-        <footer className="h-[var(--landing-gutter)] border-t border-white/15" aria-hidden="true" />
-        <Corner className="h-[var(--landing-gutter)] border-l border-t border-white/15" />
+        <Corner className="h-[var(--landing-gutter)] border-r border-t border-white/8" />
+        <footer className="h-[var(--landing-gutter)] border-t border-white/8" aria-hidden="true" />
+        <Corner className="h-[var(--landing-gutter)] border-l border-t border-white/8" />
       </div>
     </div>
   )
