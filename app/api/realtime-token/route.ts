@@ -3,6 +3,7 @@ import {
   patientHasHistory,
   recallAboutPatient,
 } from "@/lib/memory/supermemory";
+import { type AgendaBeat, buildCallAgenda } from "@/lib/voice/call-agenda";
 import {
   buildCallInstructions,
   buildIntroInstructions,
@@ -48,6 +49,9 @@ export async function POST(request: Request) {
   let instructions: string;
   let memories: string[] = [];
   let mode: "intro" | "daily";
+  // Ordered assessment beats the call client walks through during lulls. The
+  // intro call has none — first contact is purely warmth, no assessment.
+  let agenda: AgendaBeat[] = [];
 
   if (!hasHistory) {
     mode = "intro";
@@ -62,6 +66,7 @@ export async function POST(request: Request) {
     );
     memories = hits.map((h) => h.memory);
     instructions = buildCallInstructions(patient, memories);
+    agenda = buildCallAgenda(patient);
   }
 
   const res = await fetch("https://api.x.ai/v1/realtime/client_secrets", {
@@ -92,6 +97,7 @@ export async function POST(request: Request) {
     value: data.value,
     expires_at: data.expires_at,
     instructions,
+    agenda,
     mode,
     memoriesRecalled: memories.length,
   });
