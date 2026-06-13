@@ -51,7 +51,8 @@ Rules:
 - "cross_session_recall": true/false ONLY if the call referenced something from a previous call and you can tell whether the patient remembered it; else null.
 - "safety_flag": true ONLY for a physical-safety or medical emergency the patient mentions: a fall or near-fall, wandering / getting lost, acute confusion about where they are, explicit distress, or a request for help. Medication uncertainty, low mood, or a missed word are NOT safety flags.
 - All count fields (fluency_count, immediate_recall, delayed_recall_words, story_recall_details, orientation_score, word_finding_failures, naming_accuracy) must be a single NUMBER, never a list or a phrase.
-- "mood": overall affect. "sleep_quality": only if sleep was discussed.
+- "mood": ALWAYS classify the patient's overall affect from how they speak and what they say — this is observable in essentially every call, so do NOT return null unless the patient said almost nothing. Map to one of: Cheerful (warm, positive, upbeat), Neutral (even, ordinary), Flat (low energy, apathetic, "I don't know", little affect, weary), Anxious (worried, fearful, unsettled), Agitated (frustrated, irritable). Tiredness, listlessness, repeated "I don't know", and low engagement are Flat. Only return null if there is genuinely no patient speech to judge.
+- "sleep_quality": if the patient says ANYTHING about how they slept or how rested they feel, classify it — Good, Fair, or Poor. "Tired", "didn't sleep", "kept waking up", "rough night", "exhausted" → Poor. "Slept alright / okay" → Fair. "Slept well / great" → Good. Use Unknown only if sleep/rest came up but was truly ambiguous; use null only if sleep and rest were never mentioned at all.
 - "observations": 0-5 short, specific notes a clinician would value (e.g. "Took a long pause and substituted 'the cutting thing' for scissors").
 - "summary": one or two warm, factual sentences.
 
