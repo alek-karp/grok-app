@@ -599,9 +599,7 @@ export function useGrokVoice() {
           type: "session.update",
           session: {
             instructions: instructionsRef.current,
-            // Warm, friendly tone — gentler than the upbeat default for an
-            // older person.
-            voice: "ara",
+            voice: storage.getVoice(),
             turn_detection: {
               type: "server_vad",
               // Give callers (especially older ones) room to pause and think

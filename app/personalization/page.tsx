@@ -17,6 +17,7 @@ import {
   type GrokVoice,
   type StoredProfile,
 } from "@/lib/db/profile-schema";
+import { storage } from "@/lib/storage";
 
 
 const DEFAULT_PROFILE: StoredProfile = {
@@ -27,6 +28,14 @@ const DEFAULT_PROFILE: StoredProfile = {
   careCircle: { caregiver: "", clinician: "" },
   interests: [""],
 };
+
+function getInitialVoice(): GrokVoice {
+  if (typeof window === "undefined") return "ara";
+  const stored = storage.getVoice();
+  return (GROK_VOICES as readonly string[]).includes(stored)
+    ? (stored as GrokVoice)
+    : "ara";
+}
 
 function Section({
   icon: Icon,
@@ -65,7 +74,10 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 
 export default function PersonalizationPage() {
   const [name, setName] = useState("");
-  const [profile, setProfile] = useState<StoredProfile>(DEFAULT_PROFILE);
+  const [profile, setProfile] = useState<StoredProfile>(() => ({
+    ...DEFAULT_PROFILE,
+    voice: getInitialVoice(),
+  }));
 
   function setRoutine(
     field: keyof NonNullable<StoredProfile["routine"]>,
@@ -279,9 +291,10 @@ export default function PersonalizationPage() {
                 <FieldLabel>Voice</FieldLabel>
                 <Select
                   value={profile.voice ?? "ara"}
-                  onValueChange={(v) =>
-                    setProfile((p) => ({ ...p, voice: v as GrokVoice }))
-                  }
+                  onValueChange={(v) => {
+                    storage.setVoice(v);
+                    setProfile((p) => ({ ...p, voice: v as GrokVoice }));
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
