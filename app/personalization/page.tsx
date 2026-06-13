@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Bot, Coffee, Heart, Sparkles, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select as SelectPrimitive } from "radix-ui";
+import { CheckIcon } from "lucide-react";
 import {
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -37,18 +38,6 @@ const DEFAULT_PROFILE: StoredProfile = {
   interests: [""],
 };
 
-function getInitialVoice(): GrokVoice {
-  if (typeof window === "undefined") return "ara";
-  const stored = storage.getVoice();
-  return (GROK_VOICES as readonly string[]).includes(stored)
-    ? (stored as GrokVoice)
-    : "ara";
-}
-
-function getInitialCompanionName(): string {
-  if (typeof window === "undefined") return "Cora";
-  return storage.getCompanionName();
-}
 
 function Section({
   icon: Icon,
@@ -87,11 +76,19 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 
 export default function PersonalizationPage() {
   const [name, setName] = useState("");
-  const [profile, setProfile] = useState<StoredProfile>(() => ({
-    ...DEFAULT_PROFILE,
-    voice: getInitialVoice(),
-    companionName: getInitialCompanionName(),
-  }));
+  const [profile, setProfile] = useState<StoredProfile>(DEFAULT_PROFILE);
+
+  useEffect(() => {
+    const stored = storage.getVoice();
+    const voice = (GROK_VOICES as readonly string[]).includes(stored)
+      ? (stored as GrokVoice)
+      : "ara";
+    setProfile((p) => ({
+      ...p,
+      voice,
+      companionName: storage.getCompanionName(),
+    }));
+  }, []);
 
   function setRoutine(
     field: keyof NonNullable<StoredProfile["routine"]>,
@@ -210,29 +207,37 @@ export default function PersonalizationPage() {
                   }}
                 >
                   <SelectTrigger>
-                    <span className="hidden"><SelectValue /></span>
                     <div className="flex items-center gap-2.5">
                       <span
                         className={`size-4 shrink-0 rounded-full bg-gradient-to-br ${VOICE_GRADIENTS[profile.voice ?? "ara"]}`}
                       />
-                      <span>{VOICE_META[profile.voice ?? "ara"].label}</span>
+                      <SelectValue />
                     </div>
                   </SelectTrigger>
                   <SelectContent>
                     {GROK_VOICES.map((v) => {
                       const meta = VOICE_META[v];
                       return (
-                        <SelectItem key={v} value={v}>
-                          <div className="flex items-center gap-2.5">
-                            <span
-                              className={`size-4 shrink-0 self-start mt-0.5 rounded-full bg-gradient-to-br ${VOICE_GRADIENTS[v]}`}
-                            />
-                            <div className="flex flex-col">
+                        <SelectPrimitive.Item
+                          key={v}
+                          value={v}
+                          className="relative flex w-full cursor-default items-center gap-2.5 rounded-2xl py-2 pr-8 pl-3 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-50"
+                        >
+                          <span
+                            className={`size-4 shrink-0 self-start mt-0.5 rounded-full bg-gradient-to-br ${VOICE_GRADIENTS[v]}`}
+                          />
+                          <div className="flex flex-col">
+                            <SelectPrimitive.ItemText>
                               <span className="font-medium">{meta.label}</span>
-                              <span className="text-muted-foreground text-sm">{meta.description}</span>
-                            </div>
+                            </SelectPrimitive.ItemText>
+                            <span className="text-muted-foreground text-sm">{meta.description}</span>
                           </div>
-                        </SelectItem>
+                          <span className="pointer-events-none absolute right-2 flex size-4 items-center justify-center">
+                            <SelectPrimitive.ItemIndicator>
+                              <CheckIcon className="size-4" />
+                            </SelectPrimitive.ItemIndicator>
+                          </span>
+                        </SelectPrimitive.Item>
                       );
                     })}
                   </SelectContent>
