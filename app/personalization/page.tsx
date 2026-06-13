@@ -17,6 +17,14 @@ import {
   type GrokVoice,
   type StoredProfile,
 } from "@/lib/db/profile-schema";
+
+const VOICE_GRADIENTS: Record<GrokVoice, string> = {
+  eve: "from-orange-400 to-pink-500",
+  ara: "from-rose-400 to-purple-500",
+  rex: "from-blue-400 to-cyan-500",
+  sal: "from-teal-400 to-green-500",
+  leo: "from-violet-500 to-indigo-600",
+};
 import { storage } from "@/lib/storage";
 
 
@@ -132,7 +140,7 @@ export default function PersonalizationPage() {
             Personalization
           </h1>
           <p className="text-sm text-muted-foreground">
-            Help your companion get to know you better.
+            Set up the companion for the person who will be taking the calls.
           </p>
         </div>
         <Button disabled>Save changes</Button>
@@ -142,8 +150,8 @@ export default function PersonalizationPage() {
         <div className="divide-y">
           <Section
             icon={User}
-            title="About you"
-            description="Basic details your companion uses to address you during calls."
+            title="About them"
+            description="Basic details the companion will use to address them during calls."
           >
             <div className="flex gap-4">
               <div className="flex-1">
@@ -151,7 +159,7 @@ export default function PersonalizationPage() {
                 <Input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="What should Cora call you?"
+                  placeholder="What should Cora call them?"
                 />
               </div>
               <div>
@@ -175,9 +183,68 @@ export default function PersonalizationPage() {
           </Section>
 
           <Section
+            icon={Bot}
+            title="The companion"
+            description="Choose how the AI companion sounds and what name it uses during calls."
+          >
+            <div className="space-y-6">
+              <div className="max-w-xs">
+                <FieldLabel>Companion's name</FieldLabel>
+                <Input
+                  value={profile.companionName ?? "Cora"}
+                  onChange={(e) => {
+                    storage.setCompanionName(e.target.value);
+                    setProfile((p) => ({ ...p, companionName: e.target.value }));
+                  }}
+                  placeholder="Cora"
+                />
+              </div>
+
+              <div className="max-w-xs">
+                <FieldLabel>Voice</FieldLabel>
+                <Select
+                  value={profile.voice ?? "ara"}
+                  onValueChange={(v) => {
+                    storage.setVoice(v);
+                    setProfile((p) => ({ ...p, voice: v as GrokVoice }));
+                  }}
+                >
+                  <SelectTrigger>
+                    <span className="hidden"><SelectValue /></span>
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className={`size-4 shrink-0 rounded-full bg-gradient-to-br ${VOICE_GRADIENTS[profile.voice ?? "ara"]}`}
+                      />
+                      <span>{VOICE_META[profile.voice ?? "ara"].label}</span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GROK_VOICES.map((v) => {
+                      const meta = VOICE_META[v];
+                      return (
+                        <SelectItem key={v} value={v}>
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className={`size-4 shrink-0 self-start mt-0.5 rounded-full bg-gradient-to-br ${VOICE_GRADIENTS[v]}`}
+                            />
+                            <div className="flex flex-col">
+                              <span className="font-medium">{meta.label}</span>
+                              <span className="text-muted-foreground text-sm">{meta.description}</span>
+                            </div>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </Section>
+
+          <Section
             icon={Coffee}
             title="Morning routine"
-            description="Anchor points for natural check-ins. Used to gently probe orientation and medication habits."
+            description="Their usual morning habits. The companion uses these as natural conversation anchors during the call."
           >
             <div className="space-y-4">
               <div>
@@ -212,7 +279,7 @@ export default function PersonalizationPage() {
           <Section
             icon={Heart}
             title="Support circle"
-            description="Mentioned at the end of each call when checking in on how things are going."
+            description="People the companion can mention during calls — so they feel connected to the people around them."
           >
             <div className="space-y-4">
               <div>
@@ -236,8 +303,8 @@ export default function PersonalizationPage() {
 
           <Section
             icon={Sparkles}
-            title="What you enjoy"
-            description="Conversation hooks so every call feels warm and personal rather than clinical."
+            title="What they enjoy"
+            description="Topics the companion will bring up to make calls feel personal and familiar."
           >
             <div className="flex flex-wrap gap-2">
               {(profile.interests ?? [""]).map((interest, i) => (
@@ -270,51 +337,6 @@ export default function PersonalizationPage() {
               >
                 + Add
               </Button>
-            </div>
-          </Section>
-
-          <Section
-            icon={Bot}
-            title="Your companion"
-            description="Choose how your AI companion sounds and what it calls itself."
-          >
-            <div className="space-y-6">
-              <div className="max-w-xs">
-                <FieldLabel>Companion's name</FieldLabel>
-                <Input
-                  value={profile.companionName ?? "Cora"}
-                  onChange={(e) => {
-                    storage.setCompanionName(e.target.value);
-                    setProfile((p) => ({ ...p, companionName: e.target.value }));
-                  }}
-                  placeholder="Cora"
-                />
-              </div>
-
-              <div className="max-w-xs">
-                <FieldLabel>Voice</FieldLabel>
-                <Select
-                  value={profile.voice ?? "ara"}
-                  onValueChange={(v) => {
-                    storage.setVoice(v);
-                    setProfile((p) => ({ ...p, voice: v as GrokVoice }));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {GROK_VOICES.map((v) => {
-                      const meta = VOICE_META[v];
-                      return (
-                        <SelectItem key={v} value={v}>
-                          {meta.label} — {meta.description}
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
           </Section>
         </div>
