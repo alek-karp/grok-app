@@ -374,7 +374,7 @@ export default function DashboardPage() {
   const xInterval = chartInterval(data);
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+    <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-8 py-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-base font-semibold">

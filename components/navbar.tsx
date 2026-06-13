@@ -51,7 +51,7 @@ export function Navbar() {
               <TabsTrigger value={ROUTES.transcripts} asChild>
                 <Link href={ROUTES.transcripts} className="flex items-center gap-1.5">
                   <ScrollText className="size-3.5" />
-                  Transcripts
+                  Call History
                 </Link>
               </TabsTrigger>
             </TabsList>

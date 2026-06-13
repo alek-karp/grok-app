@@ -51,7 +51,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[280px_1fr] gap-12 px-8 py-8">
+    <div className="grid grid-cols-[280px_1fr] gap-12 px-8 py-4">
       <div>
         <div className="flex items-center gap-2">
           <Icon className="size-4 text-muted-foreground" />
@@ -131,7 +131,7 @@ export default function PersonalizationPage() {
 
   return (
     <main className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center justify-between border-b px-8 py-5">
+      <div className="flex shrink-0 items-center justify-between border-b px-8 py-4">
         <div>
           <h1 className="text-lg font-semibold tracking-tight">
             Personalization

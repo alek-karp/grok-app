@@ -112,7 +112,7 @@ export default function TranscriptsPage() {
     <main className="flex min-h-0 flex-1 overflow-hidden">
       {/* List panel */}
       <div className="flex w-80 shrink-0 flex-col border-r">
-        <div className="shrink-0 border-b px-4 py-3">
+        <div className="shrink-0 border-b px-8 py-3">
           <h1 className="text-base font-semibold">Call Transcripts</h1>
           <p className="text-sm text-muted-foreground">
             {loading ? "Loading…" : `${rows.length} call${rows.length === 1 ? "" : "s"}`}
@@ -133,7 +133,7 @@ export default function TranscriptsPage() {
                 <button
                   key={row.id}
                   onClick={() => setSelectedId(row.id)}
-                  className={`flex w-full flex-col gap-1.5 px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
+                  className={`flex w-full flex-col gap-1.5 px-8 py-3 text-left transition-colors hover:bg-muted/50 ${
                     selectedId === row.id ? "bg-muted" : ""
                   }`}
                 >
@@ -179,7 +179,7 @@ export default function TranscriptsPage() {
           </div>
         ) : detail ? (
           <>
-            <div className="shrink-0 border-b px-6 py-3">
+            <div className="shrink-0 border-b px-8 py-3">
               <div className="flex items-center gap-3">
                 <h2 className="text-base font-semibold">
                   {formatDate(detail.call_date)}
@@ -201,7 +201,7 @@ export default function TranscriptsPage() {
                 <p className="mt-1 text-sm text-muted-foreground">{detail.summary}</p>
               )}
             </div>
-            <ScrollArea className="min-h-0 flex-1 px-6 py-4">
+            <ScrollArea className="min-h-0 flex-1 px-8 py-4">
               {detail.transcript ? (
                 <ConversationPreview
                   transcript={detail.transcript}
