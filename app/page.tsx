@@ -1,9 +1,5 @@
-import { AIPersona } from "@/components/ai-persona";
+import { redirect } from "next/navigation"
 
 export default function Home() {
-  return (
-    <main className="flex flex-1 items-center justify-center">
-      <AIPersona />
-    </main>
-  );
+  redirect("/agent")
 }
