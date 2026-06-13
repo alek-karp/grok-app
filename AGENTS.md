@@ -12,3 +12,6 @@ Use `bun` (not npm or yarn).
 
 # UI
 Do not use `text-xs` for any font sizes. Use `text-sm` as the minimum.
+
+# Verification
+Run `bun run verify` after completing any code changes to confirm there are no type errors.
