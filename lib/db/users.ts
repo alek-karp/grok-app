@@ -27,4 +27,13 @@ export const users = {
     `;
     return (rows[0] as User) ?? null;
   },
+
+  findById: async (id: string): Promise<User | null> => {
+    const rows = await sql`
+      SELECT id, phone, name, role, created_at
+      FROM users
+      WHERE id = ${id}
+    `;
+    return (rows[0] as User) ?? null;
+  },
 };

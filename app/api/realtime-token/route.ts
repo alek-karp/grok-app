@@ -7,17 +7,19 @@ import {
   buildCallInstructions,
   buildIntroInstructions,
 } from "@/lib/voice/call-flow";
-import { DEMO_PATIENT } from "@/lib/voice/patient-profile";
+import { resolvePatientProfile } from "@/lib/voice/resolve-patient";
 
 // Always run at request time — we never want to cache a short-lived token.
 export const dynamic = "force-dynamic";
 
 /**
- * Starts a call: mints a short-lived xAI ephemeral token AND builds the
- * memory-personalized system instructions — both server-side so neither the
- * xAI key nor the supermemory key ever reaches the browser.
+ * Starts a call: resolves the real patient from the database, mints a
+ * short-lived xAI ephemeral token, AND builds the memory-personalized system
+ * instructions — all server-side so neither the xAI key nor the supermemory key
+ * ever reaches the browser.
  *
- * Returns: { value, expires_at, instructions, memoriesRecalled }
+ * Body: { phone?: string, patientId?: string, name?: string }
+ * Returns: { value, expires_at, instructions, mode, memoriesRecalled }
  *
  * Docs: https://docs.x.ai/developers/model-capabilities/audio/ephemeral-tokens
  */
@@ -30,15 +32,15 @@ export async function POST(request: Request) {
     );
   }
 
-  // For the demo we only have one patient; a real app would resolve this from
-  // the authenticated user.
-  let patientId = DEMO_PATIENT.id;
+  // Resolve who we're calling from the DB (name + stable memory id).
+  let body: { phone?: string; patientId?: string; name?: string } = {};
   try {
-    const body = await request.json();
-    if (body?.patientId) patientId = String(body.patientId);
+    body = await request.json();
   } catch {
-    // No body is fine — fall back to the demo patient.
+    // No body is fine — resolver falls back to the demo patient.
   }
+  const patient = await resolvePatientProfile(body);
+  const patientId = patient.id;
 
   // First-ever call? Run the warm intro instead of the daily check-in.
   const hasHistory = await patientHasHistory(patientId);
@@ -49,17 +51,17 @@ export async function POST(request: Request) {
 
   if (!hasHistory) {
     mode = "intro";
-    instructions = buildIntroInstructions(DEMO_PATIENT);
+    instructions = buildIntroInstructions(patient);
   } else {
     mode = "daily";
     // Recall what we learned in previous calls.
     const hits = await recallAboutPatient(
       patientId,
-      `Recent life, family, health, mood, routine, and anything ${DEMO_PATIENT.preferredName} shared in past calls`,
+      `Recent life, family, health, mood, routine, and anything ${patient.preferredName} shared in past calls`,
       8,
     );
     memories = hits.map((h) => h.memory);
-    instructions = buildCallInstructions(DEMO_PATIENT, memories);
+    instructions = buildCallInstructions(patient, memories);
   }
 
   const res = await fetch("https://api.x.ai/v1/realtime/client_secrets", {

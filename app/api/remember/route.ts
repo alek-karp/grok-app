@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { rememberAboutPatient } from "@/lib/memory/supermemory";
-import { DEMO_PATIENT } from "@/lib/voice/patient-profile";
+import { resolvePatientProfile } from "@/lib/voice/resolve-patient";
 
 export const dynamic = "force-dynamic";
 
@@ -11,19 +11,23 @@ type Turn = { role: "user" | "assistant"; text: string };
  * Supermemory extracts atomic memories from the text automatically, so we just
  * hand it a clean, labelled transcript. No-op when memory is disabled.
  *
- * Body: { patientId?: string, turns: { role, text }[] }
+ * Body: { phone?: string, patientId?: string, name?: string, turns: { role, text }[] }
  */
 export async function POST(request: Request) {
-  let patientId = DEMO_PATIENT.id;
-  let turns: Turn[] = [];
+  let body: {
+    phone?: string;
+    patientId?: string;
+    name?: string;
+    turns?: Turn[];
+  } = {};
 
   try {
-    const body = await request.json();
-    if (body?.patientId) patientId = String(body.patientId);
-    if (Array.isArray(body?.turns)) turns = body.turns as Turn[];
+    body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
+
+  const turns: Turn[] = Array.isArray(body.turns) ? body.turns : [];
 
   // Only store if the patient actually said something — skip empty / one-sided
   // calls so we don't pollute memory with greetings that went nowhere.
@@ -34,8 +38,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ stored: false, reason: "no patient speech" });
   }
 
-  const name = DEMO_PATIENT.preferredName;
-  const companion = DEMO_PATIENT.companionName;
+  // Resolve the real patient (DB-backed name + stable memory id).
+  const patient = await resolvePatientProfile(body);
+  const name = patient.preferredName;
+  const companion = patient.companionName;
   const date = new Date().toISOString().slice(0, 10);
 
   const transcript = turns
@@ -45,7 +51,7 @@ export async function POST(request: Request) {
 
   const content = `Daily check-in call with ${name} on ${date}.\n\n${transcript}`;
 
-  const result = await rememberAboutPatient(patientId, content, {
+  const result = await rememberAboutPatient(patient.id, content, {
     kind: "call_transcript",
     date,
   });

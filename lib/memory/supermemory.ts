@@ -23,10 +23,12 @@ export function isMemoryEnabled(): boolean {
 
 /**
  * Container tag isolates one patient's memories from everyone else's.
- * Keep it stable per patient (e.g. a patient id).
+ * Keep it stable per patient (e.g. a DB user id). Supermemory only allows
+ * [a-zA-Z0-9_:-] in tags, so we strip anything else (e.g. "+" in phone numbers).
  */
 export function patientContainerTag(patientId: string): string {
-  return `patient_${patientId}`;
+  const safe = patientId.replace(/[^a-zA-Z0-9_:-]/g, "");
+  return `patient_${safe}`;
 }
 
 export type MemoryHit = {

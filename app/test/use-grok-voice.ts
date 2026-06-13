@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { storage } from "@/lib/storage";
 import { buildCallInstructions } from "@/lib/voice/call-flow";
 import { DEMO_PATIENT } from "@/lib/voice/patient-profile";
 import { base64PCM16ToInt16, float32ToBase64PCM16 } from "@/lib/voice/pcm";
@@ -306,7 +307,11 @@ export function useGrokVoice() {
         void fetch("/api/remember", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ patientId: DEMO_PATIENT.id, turns }),
+          body: JSON.stringify({
+            phone: storage.getPhone(),
+            name: storage.getName(),
+            turns,
+          }),
         }).catch(() => {});
       }
     }
@@ -345,10 +350,14 @@ export function useGrokVoice() {
     try {
       // 1. Start the call: mint an ephemeral token AND get memory-personalized
       //    instructions, both built server-side (keys never reach the browser).
+      //    We send the real signed-up identity so the call uses their DB name.
       const tokenRes = await fetch("/api/realtime-token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patientId: DEMO_PATIENT.id }),
+        body: JSON.stringify({
+          phone: storage.getPhone(),
+          name: storage.getName(),
+        }),
       });
       if (!tokenRes.ok) {
         const body = await tokenRes.json().catch(() => ({}));
