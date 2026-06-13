@@ -4,10 +4,12 @@ import {
   Activity,
   BrainCircuit,
   CheckCircle2,
+  EarOff,
   Loader2,
   MessageSquare,
   Mic,
   PhoneOff,
+  Send,
   Sparkles,
   Wrench,
 } from "lucide-react";
@@ -21,6 +23,7 @@ import { Persona } from "@/components/ai-elements/persona";
 import type { PersonaState } from "@/components/ai-elements/persona";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
   type DebugEvent,
@@ -183,6 +186,23 @@ function DebugEventRow({ event }: { event: DebugEvent }) {
     );
   }
 
+  if (event.kind === "guidance") {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+        <EarOff className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-500">
+            Caretaker guidance (silent)
+          </span>
+          <span className="text-xs text-foreground">{event.text}</span>
+        </div>
+        <span className="ml-auto text-[11px] text-muted-foreground">
+          {shortTime(event.at)}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-background px-3 py-2">
       <div className="flex items-center gap-2 text-xs">
@@ -251,6 +271,75 @@ function DebugContent({ events }: { events: DebugEvent[] }) {
   );
 }
 
+const CARETAKER_SUGGESTIONS = [
+  "Gently ask if they took their medication",
+  "Ask about their family",
+  "Check what day they think it is",
+  "Start gently wrapping up the call",
+];
+
+/**
+ * Same-screen caretaker console. Anything sent here silently steers Cora's next
+ * reply — the patient never hears it. (For a real second device, the /caretaker
+ * page feeds the same channel.)
+ */
+function CaretakerBar({
+  onSend,
+  disabled,
+}: {
+  onSend: (text: string) => void;
+  disabled: boolean;
+}) {
+  const [text, setText] = useState("");
+
+  const submit = () => {
+    const v = text.trim();
+    if (!v) return;
+    onSend(v);
+    setText("");
+  };
+
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2.5">
+      <div className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-500">
+        <EarOff className="size-3.5" />
+        Caretaker — private guidance (the patient can't hear this)
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {CARETAKER_SUGGESTIONS.map((s) => (
+          <button
+            key={s}
+            type="button"
+            disabled={disabled}
+            onClick={() => onSend(s)}
+            className="rounded-full border border-amber-500/40 bg-background px-2.5 py-1 text-[11px] text-foreground transition-colors hover:bg-amber-500/10 disabled:opacity-50"
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2">
+        <Input
+          value={text}
+          disabled={disabled}
+          placeholder={
+            disabled ? "Start a call to guide Cora…" : "Whisper a suggestion…"
+          }
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submit();
+          }}
+          className="h-8 rounded-md text-sm"
+        />
+        <Button size="sm" onClick={submit} disabled={disabled || !text.trim()}>
+          <Send className="size-3.5" />
+          Send
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function PersonaCenter({
   status,
   isLive,
@@ -311,8 +400,16 @@ function PersonaCenter({
 }
 
 export default function CallPage() {
-  const { status, error, transcript, toolActivity, debugEvents, connect, disconnect } =
-    useGrokVoice();
+  const {
+    status,
+    error,
+    transcript,
+    toolActivity,
+    debugEvents,
+    connect,
+    disconnect,
+    sendGuidance,
+  } = useGrokVoice();
   const isLive = status === "listening" || status === "speaking";
   const [mobileTab, setMobileTab] = useState<MobileTab>("persona");
 
@@ -337,13 +434,14 @@ export default function CallPage() {
         <div className="flex min-h-0 flex-col gap-2">
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-1">Debug</p>
           <DebugContent events={debugEvents} />
+          <CaretakerBar onSend={sendGuidance} disabled={!isLive} />
         </div>
       </div>
 
       {/* ── Mobile: tab-switched single column ── */}
       <div className="flex md:hidden flex-col h-[calc(100svh-3.5rem)]">
         {/* Tab content */}
-        <div className="flex min-h-0 flex-1 flex-col p-4 pb-0">
+        <div className="flex min-h-0 flex-1 flex-col gap-2 p-4 pb-0">
           {mobileTab === "persona" && (
             <PersonaCenter
               status={status}
@@ -358,7 +456,10 @@ export default function CallPage() {
             <TranscriptContent transcript={transcript} isLive={isLive} />
           )}
           {mobileTab === "debug" && (
-            <DebugContent events={debugEvents} />
+            <>
+              <DebugContent events={debugEvents} />
+              <CaretakerBar onSend={sendGuidance} disabled={!isLive} />
+            </>
           )}
         </div>
 

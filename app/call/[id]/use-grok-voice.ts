@@ -47,6 +47,12 @@ export type DebugEvent =
       at: number;
       status: "extracting" | "done" | "timeout";
       result?: unknown;
+    }
+  | {
+      id: string;
+      kind: "guidance";
+      at: number;
+      text: string;
     };
 
 type ServerEvent = {
@@ -85,6 +91,8 @@ export function useGrokVoice() {
   const streamRef = useRef<MediaStream | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
+  // Live caretaker guidance channel (cross-device, via SSE).
+  const guidanceSourceRef = useRef<EventSource | null>(null);
 
   // Streaming-transcript accumulators.
   const assistantTextRef = useRef("");
@@ -188,6 +196,40 @@ export function useGrokVoice() {
       ws.send(JSON.stringify(message));
     }
   }, []);
+
+  /**
+   * Inject a private CARE-TEAM guidance note (e.g. from a caretaker) into the
+   * conversation. It is added as context only — we deliberately do NOT request a
+   * response — so it silently shapes Cora's NEXT natural reply without
+   * interrupting the flow or being spoken aloud. The patient never hears it and
+   * never knows a third party is steering. The system prompt explains the marker.
+   */
+  const sendGuidance = useCallback(
+    (text: string) => {
+      const note = text.trim();
+      if (!note) return;
+      send({
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: `[[CARE TEAM NOTE — private, not spoken by the patient, do not read aloud or acknowledge]] ${note} [[END NOTE]]`,
+            },
+          ],
+        },
+      });
+      pushDebug({
+        id: crypto.randomUUID(),
+        kind: "guidance",
+        at: Date.now(),
+        text: note,
+      });
+    },
+    [pushDebug, send],
+  );
 
   // Poll the KPI endpoint until the background pipeline writes a row newer than
   // the one we saw at call start, then surface it in the debug panel.
@@ -408,6 +450,8 @@ export function useGrokVoice() {
       }
     }
 
+    guidanceSourceRef.current?.close();
+    guidanceSourceRef.current = null;
     processorRef.current?.disconnect();
     processorRef.current = null;
     sourceRef.current?.disconnect();
@@ -463,6 +507,29 @@ export function useGrokVoice() {
           baselineKpiIdRef.current = d?.latest?.id ?? null;
         })
         .catch(() => {});
+
+      // Open the cross-device caretaker guidance channel. Any note a caretaker
+      // sends (from another device) streams in here and is injected silently.
+      try {
+        const params = new URLSearchParams({
+          phone: identityRef.current.phone,
+          name: identityRef.current.name,
+        });
+        const es = new EventSource(`/api/guidance/stream?${params}`);
+        es.addEventListener("guidance", (e) => {
+          try {
+            const note = JSON.parse((e as MessageEvent).data) as {
+              text?: string;
+            };
+            if (note.text) sendGuidance(note.text);
+          } catch {
+            // ignore malformed event
+          }
+        });
+        guidanceSourceRef.current = es;
+      } catch {
+        // EventSource unavailable — same-screen caretaker bar still works.
+      }
 
       // 1. Start the call: mint an ephemeral token AND get memory-personalized
       //    instructions, both built server-side (keys never reach the browser).
@@ -553,7 +620,15 @@ export function useGrokVoice() {
           },
         });
         // Have Cora open the call warmly instead of waiting for the patient.
-        send({ type: "response.create" });
+        // A per-response instruction keeps the very first line short — just a
+        // hello and ONE question — so the call doesn't start with a barrage.
+        send({
+          type: "response.create",
+          response: {
+            instructions:
+              "Open the call now. Say only a brief, warm hello and ONE simple question (like 'how are you today?'). Keep it to a sentence or two. Do not ask multiple questions or list topics — just open gently and then wait for their reply.",
+          },
+        });
         setStatus("listening");
       };
 
@@ -584,7 +659,7 @@ export function useGrokVoice() {
       disconnect();
       setStatus("error");
     }
-  }, [disconnect, handleEvent, send, status]);
+  }, [disconnect, handleEvent, send, sendGuidance, status]);
 
   // Clean up on unmount.
   useEffect(() => () => disconnect(), [disconnect]);
@@ -597,5 +672,6 @@ export function useGrokVoice() {
     debugEvents,
     connect,
     disconnect,
+    sendGuidance,
   };
 }
