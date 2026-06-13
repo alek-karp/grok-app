@@ -1,16 +1,34 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import {
-  Bar, BarChart, CartesianGrid, Line, LineChart,
-  XAxis, YAxis, ReferenceLine,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ReferenceLine,
+  XAxis,
+  YAxis,
 } from "recharts";
-import {
-  ChartContainer, ChartTooltip, ChartTooltipContent,
-  ChartLegend, ChartLegendContent, type ChartConfig,
-} from "@/components/ui/chart";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { kpiData, BASELINES, medicationEncoded, moodEncoded } from "@/lib/mock-kpi-data";
 import { CognitiveDeclineChart } from "@/components/cognitive-decline-chart";
+import { Badge } from "@/components/ui/badge";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type {
+  DashboardKpiEntry,
+  DashboardKpiPayload,
+} from "@/lib/dashboard-kpi";
+import { BASELINES, type CallEntry, kpiData } from "@/lib/mock-kpi-data";
+import { storage } from "@/lib/storage";
 
 const activityData = [
   { day: "Mon", steps: 4200, activeMin: 32 },
@@ -22,26 +40,55 @@ const activityData = [
   { day: "Sun", steps: 5800, activeMin: 50 },
 ];
 
+const chartTick = { fontSize: 14 };
 const barConfig = {
   steps: { label: "Steps", color: "var(--chart-1)" },
   activeMin: { label: "Active Min", color: "var(--chart-2)" },
 } satisfies ChartConfig;
 
-const fluencyConfig = { verbalFluency: { label: "Animals Named", color: "var(--chart-1)" } } satisfies ChartConfig;
-const storyConfig = { storyRecallDetails: { label: "Details Recalled", color: "var(--chart-2)" }, storyRecallSpeakingTime: { label: "Speaking Time (s)", color: "var(--chart-3)" } } satisfies ChartConfig;
-const namingConfig = { namingAccuracy: { label: "Accuracy %", color: "var(--chart-1)" }, wordFindingFailures: { label: "Word-Finding Failures", color: "var(--chart-4)" } } satisfies ChartConfig;
-const wordRecallConfig = { immediateWordRecall: { label: "Immediate", color: "var(--chart-1)" }, delayedWordRecall: { label: "Delayed", color: "var(--chart-2)" } } satisfies ChartConfig;
-const orientationConfig = { temporalOrientation: { label: "Orientation Score", color: "var(--chart-3)" } } satisfies ChartConfig;
-const stopWordConfig = { stopWordFraction: { label: "Stop Word Fraction", color: "var(--chart-4)" } } satisfies ChartConfig;
-const speakingTimeConfig = { speakingTimeFluency: { label: "Fluency Task", color: "var(--chart-1)" }, speakingTimeStoryRecall: { label: "Story Recall", color: "var(--chart-2)" } } satisfies ChartConfig;
-const repetitionConfig = { repetitionCount: { label: "Repetitions", color: "var(--chart-5)" } } satisfies ChartConfig;
-
-const latest = kpiData[kpiData.length - 1];
+const fluencyConfig = {
+  verbalFluency: { label: "Animals Named", color: "var(--chart-1)" },
+} satisfies ChartConfig;
+const storyConfig = {
+  storyRecallDetails: { label: "Details Recalled", color: "var(--chart-2)" },
+  storyRecallSpeakingTime: {
+    label: "Speaking Time (s)",
+    color: "var(--chart-3)",
+  },
+} satisfies ChartConfig;
+const namingConfig = {
+  namingAccuracy: { label: "Accuracy %", color: "var(--chart-1)" },
+  wordFindingFailures: {
+    label: "Word-Finding Failures",
+    color: "var(--chart-4)",
+  },
+} satisfies ChartConfig;
+const wordRecallConfig = {
+  immediateWordRecall: { label: "Immediate", color: "var(--chart-1)" },
+  delayedWordRecall: { label: "Delayed", color: "var(--chart-2)" },
+} satisfies ChartConfig;
+const orientationConfig = {
+  temporalOrientation: { label: "Orientation Score", color: "var(--chart-3)" },
+} satisfies ChartConfig;
+const stopWordConfig = {
+  stopWordFraction: { label: "Stop Word Fraction", color: "var(--chart-4)" },
+} satisfies ChartConfig;
+const lexicalConfig = {
+  lexicalDiversity: { label: "Lexical Diversity", color: "var(--chart-3)" },
+} satisfies ChartConfig;
+const speakingTimeConfig = {
+  speakingTimeFluency: { label: "Fluency Task", color: "var(--chart-1)" },
+  speakingTimeStoryRecall: { label: "Story Recall", color: "var(--chart-2)" },
+} satisfies ChartConfig;
+const repetitionConfig = {
+  repetitionCount: { label: "Repetitions", color: "var(--chart-5)" },
+} satisfies ChartConfig;
 
 const medColorMap: Record<string, string> = {
   Confirmed: "var(--chart-1)",
   Uncertain: "var(--chart-3)",
   Missed: "var(--chart-2)",
+  "Not assessed": "var(--muted-foreground)",
 };
 const moodColorMap: Record<string, string> = {
   Cheerful: "var(--chart-1)",
@@ -49,25 +96,95 @@ const moodColorMap: Record<string, string> = {
   Flat: "var(--chart-4)",
   Anxious: "var(--chart-2)",
   Agitated: "var(--chart-5)",
+  "Not assessed": "var(--muted-foreground)",
 };
-const medCurrentColor = medColorMap[latest.medicationAdherence];
-const moodCurrentColor = moodColorMap[latest.mood];
-const safetyFlagCount = kpiData.filter((d) => d.safetyFlag).length;
 
-function ChartCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+type NumericKpiKey = {
+  [K in keyof DashboardKpiEntry]: DashboardKpiEntry[K] extends number | null
+    ? K
+    : never;
+}[keyof DashboardKpiEntry];
+
+function mockToDashboardEntry(entry: CallEntry): DashboardKpiEntry {
+  return {
+    date: entry.date,
+    iso: entry.iso,
+    patientName: "Mary Chen",
+    summary: null,
+    observations: [],
+    verbalFluency: entry.verbalFluency,
+    storyRecallDetails: entry.storyRecallDetails,
+    storyRecallSpeakingTime: entry.storyRecallSpeakingTime,
+    namingAccuracy: entry.namingAccuracy,
+    wordFindingFailures: entry.wordFindingFailures,
+    immediateWordRecall: entry.immediateWordRecall,
+    delayedWordRecall: entry.delayedWordRecall,
+    temporalOrientation: entry.temporalOrientation,
+    stopWordFraction: entry.stopWordFraction,
+    lexicalDiversity: null,
+    speakingTimeFluency: entry.speakingTimeFluency,
+    speakingTimeStoryRecall: entry.speakingTimeStoryRecall,
+    repetitionCount: entry.repetitionCount,
+    medicationAdherence: entry.medicationAdherence,
+    mood: entry.mood,
+    sleepQuality: null,
+    safetyFlag: entry.safetyFlag,
+    safetyFlagType: null,
+    callCompleted: entry.callCompleted,
+    callDurationMinutes: entry.callDurationMinutes,
+  };
+}
+
+function hasAnyValue(data: DashboardKpiEntry[], keys: NumericKpiKey[]) {
+  return data.some((entry) =>
+    keys.some((key) => typeof entry[key] === "number"),
+  );
+}
+
+function chartInterval(data: DashboardKpiEntry[]) {
+  return data.length > 16 ? Math.ceil(data.length / 8) : 0;
+}
+
+function currentColor(map: Record<string, string>, value: string) {
+  return map[value] ?? "var(--muted-foreground)";
+}
+
+function ChartCard({
+  title,
+  subtitle,
+  empty,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  empty?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="flex flex-col rounded-xl border bg-card text-card-foreground shadow min-h-0">
-      <div className="p-4 pb-2 shrink-0">
+    <div className="flex min-h-72 flex-col rounded-xl border bg-card text-card-foreground shadow">
+      <div className="shrink-0 p-4 pb-2">
         <h2 className="text-sm font-semibold">{title}</h2>
-        <p className="text-xs text-muted-foreground">{subtitle}</p>
+        <p className="text-sm text-muted-foreground">{subtitle}</p>
       </div>
-      <div className="p-4 pt-0 flex-1 min-h-0">{children}</div>
+      <div className="min-h-0 flex-1 p-4 pt-0">
+        {empty ? (
+          <div className="flex h-full min-h-48 items-center justify-center rounded-lg border border-dashed text-sm text-muted-foreground">
+            No assessed values yet.
+          </div>
+        ) : (
+          children
+        )}
+      </div>
     </div>
   );
 }
 
 function StatCard({
-  title, current, currentColor, meta, dots,
+  title,
+  current,
+  currentColor,
+  meta,
+  dots,
 }: {
   title: string;
   current: string;
@@ -77,43 +194,213 @@ function StatCard({
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{title}</p>
+      <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+        {title}
+      </p>
       <div>
-        <span className="text-2xl font-bold" style={{ color: currentColor }}>{current}</span>
-        <p className="text-xs text-muted-foreground mt-0.5">{meta}</p>
+        <span className="text-2xl font-bold" style={{ color: currentColor }}>
+          {current}
+        </span>
+        <p className="mt-0.5 text-sm text-muted-foreground">{meta}</p>
       </div>
       <div className="flex flex-wrap gap-1.5">
-        {dots.map((d, i) => (
+        {dots.map((d, index) => (
           <div
-            key={i}
+            key={`${d.label}-${d.color}-${index}`}
             className="size-3.5 rounded-full"
             style={{ backgroundColor: d.color, opacity: 0.85 }}
             title={d.label}
           />
         ))}
       </div>
-      <p className="text-[10px] text-muted-foreground">← 14-day history (hover for date)</p>
+      <p className="text-sm text-muted-foreground">
+        Recent call history. Hover dots for dates.
+      </p>
+    </div>
+  );
+}
+
+function RecentCallPanel({
+  latest,
+  count,
+  loading,
+  error,
+}: {
+  latest: DashboardKpiEntry | undefined;
+  count: number;
+  loading: boolean;
+  error: string | null;
+}) {
+  return (
+    <div className="flex min-h-0 flex-col rounded-xl border bg-card p-4 text-card-foreground shadow">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold">Latest Extracted Call</h2>
+          <p className="text-sm text-muted-foreground">
+            {loading
+              ? "Loading KPI history..."
+              : latest
+                ? `${latest.date} from ${count} stored call${count === 1 ? "" : "s"}`
+                : "No stored KPI rows found"}
+          </p>
+        </div>
+        {error ? (
+          <Badge variant="destructive">DB unavailable</Badge>
+        ) : (
+          <Badge variant="secondary">{latest ? "Live DB" : "Waiting"}</Badge>
+        )}
+      </div>
+
+      {latest ? (
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline">Mood: {latest.mood}</Badge>
+            <Badge variant="outline">
+              Medication: {latest.medicationAdherence}
+            </Badge>
+            {latest.sleepQuality && (
+              <Badge variant="outline">Sleep: {latest.sleepQuality}</Badge>
+            )}
+            <Badge variant={latest.safetyFlag ? "destructive" : "secondary"}>
+              {latest.safetyFlag ? "Safety flagged" : "No safety flag"}
+            </Badge>
+          </div>
+          <div>
+            <h3 className="text-sm font-medium">Summary</h3>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+              {latest.summary || "No summary was stored for this call."}
+            </p>
+          </div>
+          <div>
+            <h3 className="text-sm font-medium">Observations</h3>
+            {latest.observations.length > 0 ? (
+              <ul className="mt-2 flex flex-col gap-2 text-sm text-muted-foreground">
+                {latest.observations.map((observation) => (
+                  <li
+                    key={observation}
+                    className="rounded-md bg-muted px-3 py-2"
+                  >
+                    {observation}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1 text-sm text-muted-foreground">
+                No qualitative observations were stored for this call.
+              </p>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex min-h-64 flex-1 items-center justify-center rounded-lg border border-dashed px-6 text-center text-sm text-muted-foreground">
+          {loading
+            ? "Loading actual KPI rows from Postgres."
+            : "Run a call or use the mock switch to preview the dashboard with sample history."}
+        </div>
+      )}
     </div>
   );
 }
 
 export default function DashboardPage() {
+  const mockData = useMemo(() => kpiData.map(mockToDashboardEntry), []);
+  const [useMock, setUseMock] = useState(false);
+  const [actualData, setActualData] = useState<DashboardKpiEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [storedName, setStoredName] = useState("");
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadKpis() {
+      const phone = storage.getPhone();
+      const name = storage.getName();
+      setStoredName(name);
+
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch("/api/kpi/history", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            phone,
+            name,
+            patientId: phone ? undefined : "mary-demo",
+            limit: 60,
+          }),
+        });
+
+        if (!res.ok) {
+          throw new Error(`KPI history returned ${res.status}`);
+        }
+
+        const payload = (await res.json()) as DashboardKpiPayload;
+        if (!ignore) setActualData(payload.rows);
+      } catch (err) {
+        if (!ignore) {
+          setError(err instanceof Error ? err.message : "Unable to load KPIs");
+          setActualData([]);
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
+    loadKpis();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const data = useMock ? mockData : actualData;
+  const latest = data.at(-1);
+  const patientName =
+    latest?.patientName ??
+    (useMock ? "Mary Chen" : storedName || "Current patient");
+  const patientDetail = useMock ? "76 - early MCI" : "Postgres KPI history";
+  const safetyFlagCount = data.filter((d) => d.safetyFlag).length;
+  const medCurrent = latest?.medicationAdherence ?? "Not assessed";
+  const moodCurrent = latest?.mood ?? "Not assessed";
+  const medCurrentColor = currentColor(medColorMap, medCurrent);
+  const moodCurrentColor = currentColor(moodColorMap, moodCurrent);
+  const xInterval = chartInterval(data);
+
   return (
-    <main className="flex flex-1 flex-col p-4 gap-4 min-h-0 overflow-hidden">
-      <div className="flex items-center justify-between">
+    <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-base font-semibold">Mary Chen · 76</h1>
-          <p className="text-xs text-muted-foreground">Early MCI · Last call {latest.date}</p>
+          <h1 className="text-base font-semibold">
+            {patientName} - {patientDetail}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Last call {latest?.date ?? "not available"}
+          </p>
         </div>
-        {safetyFlagCount > 0 && (
-          <div className="flex items-center gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-1.5">
-            <span className="size-2 rounded-full bg-destructive animate-pulse" />
-            <span className="text-xs font-medium text-destructive">{safetyFlagCount} safety flag{safetyFlagCount > 1 ? "s" : ""} in 14 days</span>
+        <div className="flex items-center gap-3">
+          {!useMock && safetyFlagCount > 0 && (
+            <Badge variant="destructive">
+              {safetyFlagCount} safety flag{safetyFlagCount > 1 ? "s" : ""}
+            </Badge>
+          )}
+          <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground shadow-sm">
+            <span id="mock-data-label">Mock data</span>
+            <Switch
+              checked={useMock}
+              onCheckedChange={setUseMock}
+              size="sm"
+              aria-labelledby="mock-data-label"
+            />
           </div>
-        )}
+        </div>
       </div>
 
-      <Tabs defaultValue="overview" className="flex flex-col flex-1 min-h-0 gap-4">
+      <Tabs
+        defaultValue="overview"
+        className="flex min-h-0 flex-1 flex-col gap-4"
+      >
         <TabsList className="w-fit shrink-0">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="memory">Language & Memory</TabsTrigger>
@@ -121,125 +408,467 @@ export default function DashboardPage() {
           <TabsTrigger value="wellness">Wellness</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="flex flex-1 min-h-0 mt-0">
-          <CognitiveDeclineChart />
+        <TabsContent
+          value="overview"
+          className="mt-0 grid min-h-[560px] flex-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]"
+        >
+          <CognitiveDeclineChart data={data} />
+          <RecentCallPanel
+            latest={latest}
+            count={data.length}
+            loading={!useMock && loading}
+            error={!useMock ? error : null}
+          />
         </TabsContent>
 
-        <TabsContent value="memory" className="flex flex-col flex-1 min-h-0 gap-4 mt-0">
-          <div className="flex-1 min-h-0 grid grid-cols-3 gap-4">
-            <ChartCard title="Verbal Fluency" subtitle="Unique animals named in 60 s (baseline 14)">
+        <TabsContent
+          value="memory"
+          className="mt-0 flex min-h-0 flex-1 flex-col gap-4"
+        >
+          <div className="grid flex-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+            <ChartCard
+              title="Verbal Fluency"
+              subtitle="Unique animals named in 60 s (baseline 14)"
+              empty={!hasAnyValue(data, ["verbalFluency"])}
+            >
               <ChartContainer config={fluencyConfig} className="h-full w-full">
-                <LineChart data={kpiData}>
+                <LineChart data={data}>
                   <CartesianGrid vertical={false} />
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} interval={2} />
-                  <YAxis tickLine={false} axisLine={false} domain={[0, 20]} tick={{ fontSize: 10 }} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={chartTick}
+                    interval={xInterval}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    domain={[0, 20]}
+                    tick={chartTick}
+                  />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <ReferenceLine y={BASELINES.verbalFluency} stroke="var(--chart-2)" strokeDasharray="4 2" label={{ value: "baseline", position: "right", fontSize: 9, fill: "var(--chart-2)" }} />
-                  <ReferenceLine y={BASELINES.verbalFluency * 0.8} stroke="var(--chart-4)" strokeDasharray="2 2" label={{ value: "−20% alert", position: "right", fontSize: 9, fill: "var(--chart-4)" }} />
-                  <Line dataKey="verbalFluency" type="monotone" stroke="var(--chart-1)" strokeWidth={2} dot={{ r: 3 }} />
+                  <ReferenceLine
+                    y={BASELINES.verbalFluency}
+                    stroke="var(--chart-2)"
+                    strokeDasharray="4 2"
+                    label={{
+                      value: "baseline",
+                      position: "right",
+                      fontSize: 14,
+                      fill: "var(--chart-2)",
+                    }}
+                  />
+                  <ReferenceLine
+                    y={BASELINES.verbalFluency * 0.8}
+                    stroke="var(--chart-4)"
+                    strokeDasharray="2 2"
+                    label={{
+                      value: "-20% alert",
+                      position: "right",
+                      fontSize: 14,
+                      fill: "var(--chart-4)",
+                    }}
+                  />
+                  <Line
+                    connectNulls
+                    dataKey="verbalFluency"
+                    type="monotone"
+                    stroke="var(--chart-1)"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
                 </LineChart>
               </ChartContainer>
             </ChartCard>
 
-            <ChartCard title="Story Recall" subtitle="Details recalled (0–10) + speaking time (s)">
+            <ChartCard
+              title="Story Recall"
+              subtitle="Details recalled (0-10) plus speaking time when available"
+              empty={
+                !hasAnyValue(data, [
+                  "storyRecallDetails",
+                  "storyRecallSpeakingTime",
+                ])
+              }
+            >
               <ChartContainer config={storyConfig} className="h-full w-full">
-                <LineChart data={kpiData}>
+                <LineChart data={data}>
                   <CartesianGrid vertical={false} />
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} interval={2} />
-                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={chartTick}
+                    interval={xInterval}
+                  />
+                  <YAxis tickLine={false} axisLine={false} tick={chartTick} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <ReferenceLine y={BASELINES.storyRecallDetails} stroke="var(--chart-2)" strokeDasharray="4 2" />
-                  <Line dataKey="storyRecallDetails" type="monotone" stroke="var(--chart-2)" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line dataKey="storyRecallSpeakingTime" type="monotone" stroke="var(--chart-3)" strokeWidth={2} dot={{ r: 3 }} />
+                  <ReferenceLine
+                    y={BASELINES.storyRecallDetails}
+                    stroke="var(--chart-2)"
+                    strokeDasharray="4 2"
+                  />
+                  <Line
+                    connectNulls
+                    dataKey="storyRecallDetails"
+                    type="monotone"
+                    stroke="var(--chart-2)"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
+                  <Line
+                    connectNulls
+                    dataKey="storyRecallSpeakingTime"
+                    type="monotone"
+                    stroke="var(--chart-3)"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
                   <ChartLegend content={<ChartLegendContent />} />
                 </LineChart>
               </ChartContainer>
             </ChartCard>
 
-            <ChartCard title="Object Naming" subtitle="Accuracy % and word-finding failures">
+            <ChartCard
+              title="Object Naming"
+              subtitle="Accuracy percent and word-finding failures"
+              empty={
+                !hasAnyValue(data, ["namingAccuracy", "wordFindingFailures"])
+              }
+            >
               <ChartContainer config={namingConfig} className="h-full w-full">
-                <LineChart data={kpiData}>
+                <LineChart data={data}>
                   <CartesianGrid vertical={false} />
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} interval={2} />
-                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={chartTick}
+                    interval={xInterval}
+                  />
+                  <YAxis tickLine={false} axisLine={false} tick={chartTick} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <ReferenceLine y={BASELINES.namingAccuracy} stroke="var(--chart-1)" strokeDasharray="4 2" />
-                  <Line dataKey="namingAccuracy" type="monotone" stroke="var(--chart-1)" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line dataKey="wordFindingFailures" type="monotone" stroke="var(--chart-4)" strokeWidth={2} dot={{ r: 3 }} />
+                  <ReferenceLine
+                    y={BASELINES.namingAccuracy}
+                    stroke="var(--chart-1)"
+                    strokeDasharray="4 2"
+                  />
+                  <Line
+                    connectNulls
+                    dataKey="namingAccuracy"
+                    type="monotone"
+                    stroke="var(--chart-1)"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
+                  <Line
+                    connectNulls
+                    dataKey="wordFindingFailures"
+                    type="monotone"
+                    stroke="var(--chart-4)"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
                   <ChartLegend content={<ChartLegendContent />} />
                 </LineChart>
               </ChartContainer>
             </ChartCard>
 
-            <ChartCard title="Word Recall" subtitle="Immediate and delayed (0–3)">
-              <ChartContainer config={wordRecallConfig} className="h-full w-full">
-                <LineChart data={kpiData}>
+            <ChartCard
+              title="Word Recall"
+              subtitle="Immediate and delayed recall (0-3)"
+              empty={
+                !hasAnyValue(data, ["immediateWordRecall", "delayedWordRecall"])
+              }
+            >
+              <ChartContainer
+                config={wordRecallConfig}
+                className="h-full w-full"
+              >
+                <LineChart data={data}>
                   <CartesianGrid vertical={false} />
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} interval={2} />
-                  <YAxis tickLine={false} axisLine={false} domain={[0, 3]} ticks={[0, 1, 2, 3]} tick={{ fontSize: 10 }} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={chartTick}
+                    interval={xInterval}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    domain={[0, 3]}
+                    ticks={[0, 1, 2, 3]}
+                    tick={chartTick}
+                  />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Line dataKey="immediateWordRecall" type="monotone" stroke="var(--chart-1)" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line dataKey="delayedWordRecall" type="monotone" stroke="var(--chart-2)" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line
+                    connectNulls
+                    dataKey="immediateWordRecall"
+                    type="monotone"
+                    stroke="var(--chart-1)"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
+                  <Line
+                    connectNulls
+                    dataKey="delayedWordRecall"
+                    type="monotone"
+                    stroke="var(--chart-2)"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
                   <ChartLegend content={<ChartLegendContent />} />
                 </LineChart>
               </ChartContainer>
             </ChartCard>
 
-            <ChartCard title="Temporal Orientation" subtitle="Day / date / month / year (0–4)">
-              <ChartContainer config={orientationConfig} className="h-full w-full">
-                <LineChart data={kpiData}>
+            <ChartCard
+              title="Temporal Orientation"
+              subtitle="Day, date, month, and year (0-4)"
+              empty={!hasAnyValue(data, ["temporalOrientation"])}
+            >
+              <ChartContainer
+                config={orientationConfig}
+                className="h-full w-full"
+              >
+                <LineChart data={data}>
                   <CartesianGrid vertical={false} />
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} interval={2} />
-                  <YAxis tickLine={false} axisLine={false} domain={[0, 4]} ticks={[0, 1, 2, 3, 4]} tick={{ fontSize: 10 }} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={chartTick}
+                    interval={xInterval}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    domain={[0, 4]}
+                    ticks={[0, 1, 2, 3, 4]}
+                    tick={chartTick}
+                  />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <ReferenceLine y={4} stroke="var(--chart-3)" strokeDasharray="4 2" />
-                  <Line dataKey="temporalOrientation" type="monotone" stroke="var(--chart-3)" strokeWidth={2} dot={{ r: 3 }} />
+                  <ReferenceLine
+                    y={4}
+                    stroke="var(--chart-3)"
+                    strokeDasharray="4 2"
+                  />
+                  <Line
+                    connectNulls
+                    dataKey="temporalOrientation"
+                    type="monotone"
+                    stroke="var(--chart-3)"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
                 </LineChart>
               </ChartContainer>
             </ChartCard>
           </div>
         </TabsContent>
 
-        <TabsContent value="speech" className="flex flex-col flex-1 min-h-0 gap-4 mt-0">
-          <div className="flex-1 min-h-0 grid grid-cols-3 gap-4">
-            <ChartCard title="Stop Word Fraction" subtitle="Filler words as proportion of total speech">
+        <TabsContent
+          value="speech"
+          className="mt-0 flex min-h-0 flex-1 flex-col gap-4"
+        >
+          <div className="grid flex-1 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+            <ChartCard
+              title="Stop Word Fraction"
+              subtitle="Filler and function words as a proportion of speech"
+              empty={!hasAnyValue(data, ["stopWordFraction"])}
+            >
               <ChartContainer config={stopWordConfig} className="h-full w-full">
-                <LineChart data={kpiData}>
+                <LineChart data={data}>
                   <CartesianGrid vertical={false} />
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} interval={2} />
-                  <YAxis tickLine={false} axisLine={false} domain={[0.25, 0.55]} tick={{ fontSize: 10 }} tickFormatter={(v) => v.toFixed(2)} />
-                  <ChartTooltip content={<ChartTooltipContent formatter={(v) => (v as number).toFixed(2)} />} />
-                  <ReferenceLine y={BASELINES.stopWordFraction} stroke="var(--chart-3)" strokeDasharray="4 2" label={{ value: "baseline", position: "right", fontSize: 9, fill: "var(--chart-3)" }} />
-                  <ReferenceLine y={BASELINES.stopWordFraction + 0.15} stroke="var(--chart-2)" strokeDasharray="2 2" label={{ value: "+15% alert", position: "right", fontSize: 9, fill: "var(--chart-2)" }} />
-                  <Line dataKey="stopWordFraction" type="monotone" stroke="var(--chart-4)" strokeWidth={2} dot={{ r: 3 }} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={chartTick}
+                    interval={xInterval}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    domain={[0.25, 0.55]}
+                    tick={chartTick}
+                    tickFormatter={(v) => v.toFixed(2)}
+                  />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(v) => (v as number).toFixed(2)}
+                      />
+                    }
+                  />
+                  <ReferenceLine
+                    y={BASELINES.stopWordFraction}
+                    stroke="var(--chart-3)"
+                    strokeDasharray="4 2"
+                    label={{
+                      value: "baseline",
+                      position: "right",
+                      fontSize: 14,
+                      fill: "var(--chart-3)",
+                    }}
+                  />
+                  <ReferenceLine
+                    y={BASELINES.stopWordFraction + 0.15}
+                    stroke="var(--chart-2)"
+                    strokeDasharray="2 2"
+                    label={{
+                      value: "+15% alert",
+                      position: "right",
+                      fontSize: 14,
+                      fill: "var(--chart-2)",
+                    }}
+                  />
+                  <Line
+                    connectNulls
+                    dataKey="stopWordFraction"
+                    type="monotone"
+                    stroke="var(--chart-4)"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
                 </LineChart>
               </ChartContainer>
             </ChartCard>
 
-            <ChartCard title="Repetition Within Call" subtitle="Times patient repeated a phrase or question">
-              <ChartContainer config={repetitionConfig} className="h-full w-full">
-                <BarChart data={kpiData}>
+            <ChartCard
+              title="Lexical Diversity"
+              subtitle="Type-token ratio from patient speech"
+              empty={!hasAnyValue(data, ["lexicalDiversity"])}
+            >
+              <ChartContainer config={lexicalConfig} className="h-full w-full">
+                <LineChart data={data}>
                   <CartesianGrid vertical={false} />
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} interval={2} />
-                  <YAxis tickLine={false} axisLine={false} domain={[0, 5]} ticks={[0, 1, 2, 3, 4, 5]} tick={{ fontSize: 10 }} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={chartTick}
+                    interval={xInterval}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    domain={[0, 1]}
+                    tick={chartTick}
+                    tickFormatter={(v) => v.toFixed(2)}
+                  />
+                  <ChartTooltip
+                    content={
+                      <ChartTooltipContent
+                        formatter={(v) => (v as number).toFixed(2)}
+                      />
+                    }
+                  />
+                  <Line
+                    connectNulls
+                    dataKey="lexicalDiversity"
+                    type="monotone"
+                    stroke="var(--chart-3)"
+                    strokeWidth={2}
+                    dot={{ r: 3 }}
+                  />
+                </LineChart>
+              </ChartContainer>
+            </ChartCard>
+
+            <ChartCard
+              title="Repetition Within Call"
+              subtitle="Times patient repeated a phrase or question"
+              empty={!hasAnyValue(data, ["repetitionCount"])}
+            >
+              <ChartContainer
+                config={repetitionConfig}
+                className="h-full w-full"
+              >
+                <BarChart data={data}>
+                  <CartesianGrid vertical={false} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={chartTick}
+                    interval={xInterval}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    domain={[0, 5]}
+                    ticks={[0, 1, 2, 3, 4, 5]}
+                    tick={chartTick}
+                  />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <ReferenceLine y={3} stroke="var(--chart-4)" strokeDasharray="4 2" label={{ value: "flag ≥3", position: "right", fontSize: 9, fill: "var(--chart-4)" }} />
-                  <Bar dataKey="repetitionCount" fill="var(--chart-5)" radius={[3, 3, 0, 0]} />
+                  <ReferenceLine
+                    y={3}
+                    stroke="var(--chart-4)"
+                    strokeDasharray="4 2"
+                    label={{
+                      value: "flag >=3",
+                      position: "right",
+                      fontSize: 14,
+                      fill: "var(--chart-4)",
+                    }}
+                  />
+                  <Bar
+                    dataKey="repetitionCount"
+                    fill="var(--chart-5)"
+                    radius={[3, 3, 0, 0]}
+                  />
                 </BarChart>
               </ChartContainer>
             </ChartCard>
 
-            <ChartCard title="Speaking Time per Task" subtitle="Fluency and story recall windows (seconds)">
-              <ChartContainer config={speakingTimeConfig} className="h-full w-full">
-                <BarChart data={kpiData}>
+            <ChartCard
+              title="Speaking Time per Task"
+              subtitle="Fluency and story recall windows in seconds"
+              empty={
+                !hasAnyValue(data, [
+                  "speakingTimeFluency",
+                  "speakingTimeStoryRecall",
+                ])
+              }
+            >
+              <ChartContainer
+                config={speakingTimeConfig}
+                className="h-full w-full"
+              >
+                <BarChart data={data}>
                   <CartesianGrid vertical={false} />
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} interval={2} />
-                  <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 10 }} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={chartTick}
+                    interval={xInterval}
+                  />
+                  <YAxis tickLine={false} axisLine={false} tick={chartTick} />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <ReferenceLine y={BASELINES.speakingTimeFluency} stroke="var(--chart-1)" strokeDasharray="4 2" />
-                  <ReferenceLine y={BASELINES.speakingTimeStoryRecall} stroke="var(--chart-2)" strokeDasharray="4 2" />
-                  <Bar dataKey="speakingTimeFluency" fill="var(--chart-1)" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="speakingTimeStoryRecall" fill="var(--chart-2)" radius={[3, 3, 0, 0]} />
+                  <ReferenceLine
+                    y={BASELINES.speakingTimeFluency}
+                    stroke="var(--chart-1)"
+                    strokeDasharray="4 2"
+                  />
+                  <ReferenceLine
+                    y={BASELINES.speakingTimeStoryRecall}
+                    stroke="var(--chart-2)"
+                    strokeDasharray="4 2"
+                  />
+                  <Bar
+                    dataKey="speakingTimeFluency"
+                    fill="var(--chart-1)"
+                    radius={[3, 3, 0, 0]}
+                  />
+                  <Bar
+                    dataKey="speakingTimeStoryRecall"
+                    fill="var(--chart-2)"
+                    radius={[3, 3, 0, 0]}
+                  />
                   <ChartLegend content={<ChartLegendContent />} />
                 </BarChart>
               </ChartContainer>
@@ -247,60 +876,126 @@ export default function DashboardPage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="wellness" className="flex flex-col flex-1 min-h-0 gap-4 mt-0">
-          <div className="shrink-0 grid grid-cols-3 gap-4">
+        <TabsContent
+          value="wellness"
+          className="mt-0 flex min-h-0 flex-1 flex-col gap-4"
+        >
+          <div className="grid shrink-0 gap-4 lg:grid-cols-3">
             <StatCard
               title="Medication adherence"
-              current={latest.medicationAdherence}
+              current={medCurrent}
               currentColor={medCurrentColor}
-              meta="14-day history · green = Confirmed · yellow = Uncertain · red = Missed"
-              dots={medicationEncoded.map((d) => ({ color: medColorMap[d.label] ?? "var(--muted)", label: `${d.date}: ${d.label}` }))}
+              meta="Green confirmed, yellow uncertain, red missed, gray not assessed"
+              dots={data.map((d) => ({
+                color: medColorMap[d.medicationAdherence] ?? "var(--muted)",
+                label: `${d.date}: ${d.medicationAdherence}`,
+              }))}
             />
             <StatCard
               title="Mood & affect"
-              current={latest.mood}
+              current={moodCurrent}
               currentColor={moodCurrentColor}
-              meta="14-day history · green = Cheerful · yellow = Neutral · orange = Flat · red = Anxious"
-              dots={moodEncoded.map((d) => ({ color: moodColorMap[d.label] ?? "var(--muted)", label: `${d.date}: ${d.label}` }))}
+              meta="Green cheerful, yellow neutral, orange flat, red anxious"
+              dots={data.map((d) => ({
+                color: moodColorMap[d.mood] ?? "var(--muted)",
+                label: `${d.date}: ${d.mood}`,
+              }))}
             />
             <StatCard
               title="Safety flags"
-              current={safetyFlagCount === 0 ? "None" : `${safetyFlagCount} flag${safetyFlagCount > 1 ? "s" : ""}`}
-              currentColor={safetyFlagCount === 0 ? "var(--chart-1)" : "var(--chart-2)"}
-              meta="Falls, wandering, or distress · red = flagged · green = clear"
-              dots={kpiData.map((d) => ({ color: d.safetyFlag ? "var(--chart-2)" : "var(--chart-1)", label: `${d.date}: ${d.safetyFlag ? "Flagged" : "Clear"}` }))}
+              current={
+                safetyFlagCount === 0
+                  ? "None"
+                  : `${safetyFlagCount} flag${safetyFlagCount > 1 ? "s" : ""}`
+              }
+              currentColor={
+                safetyFlagCount === 0 ? "var(--chart-1)" : "var(--chart-2)"
+              }
+              meta="Falls, wandering, acute confusion, distress, or help requests"
+              dots={data.map((d) => ({
+                color: d.safetyFlag ? "var(--chart-2)" : "var(--chart-1)",
+                label: `${d.date}: ${d.safetyFlag ? "Flagged" : "Clear"}`,
+              }))}
             />
           </div>
 
-          <div className="flex-1 min-h-0 grid grid-cols-2 gap-4">
-            <div className="flex flex-col rounded-xl border bg-card text-card-foreground shadow min-h-0">
-              <div className="p-4 pb-2 shrink-0">
+          <div className="grid flex-1 gap-4 lg:grid-cols-2">
+            <div className="flex min-h-72 flex-col rounded-xl border bg-card text-card-foreground shadow">
+              <div className="shrink-0 p-4 pb-2">
                 <h2 className="text-sm font-semibold">Daily Activity</h2>
-                <p className="text-xs text-muted-foreground">Steps & active minutes this week</p>
+                <p className="text-sm text-muted-foreground">
+                  Demo steps and active minutes for the week
+                </p>
               </div>
-              <div className="p-4 pt-0 flex-1 min-h-0">
+              <div className="min-h-0 flex-1 p-4 pt-0">
                 <ChartContainer config={barConfig} className="h-full w-full">
                   <BarChart data={activityData}>
                     <CartesianGrid vertical={false} />
-                    <XAxis dataKey="day" tickLine={false} axisLine={false} tickMargin={8} />
-                    <YAxis tickLine={false} axisLine={false} tickMargin={8} />
+                    <XAxis
+                      dataKey="day"
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      tick={chartTick}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tickMargin={8}
+                      tick={chartTick}
+                    />
                     <ChartTooltip content={<ChartTooltipContent />} />
                     <ChartLegend content={<ChartLegendContent />} />
-                    <Bar dataKey="steps" fill="var(--chart-1)" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="activeMin" fill="var(--chart-2)" radius={[4, 4, 0, 0]} />
+                    <Bar
+                      dataKey="steps"
+                      fill="var(--chart-1)"
+                      radius={[4, 4, 0, 0]}
+                    />
+                    <Bar
+                      dataKey="activeMin"
+                      fill="var(--chart-2)"
+                      radius={[4, 4, 0, 0]}
+                    />
                   </BarChart>
                 </ChartContainer>
               </div>
             </div>
 
-            <ChartCard title="Call Duration" subtitle="Minutes per completed call">
-              <ChartContainer config={{ callDurationMinutes: { label: "Duration (min)", color: "var(--chart-1)" } }} className="h-full w-full">
-                <BarChart data={kpiData}>
+            <ChartCard
+              title="Call Duration"
+              subtitle="Minutes per completed call when available"
+              empty={!hasAnyValue(data, ["callDurationMinutes"])}
+            >
+              <ChartContainer
+                config={{
+                  callDurationMinutes: {
+                    label: "Duration (min)",
+                    color: "var(--chart-1)",
+                  },
+                }}
+                className="h-full w-full"
+              >
+                <BarChart data={data}>
                   <CartesianGrid vertical={false} />
-                  <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 10 }} interval={2} />
-                  <YAxis tickLine={false} axisLine={false} domain={[0, 12]} tick={{ fontSize: 10 }} />
+                  <XAxis
+                    dataKey="date"
+                    tickLine={false}
+                    axisLine={false}
+                    tick={chartTick}
+                    interval={xInterval}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    domain={[0, 12]}
+                    tick={chartTick}
+                  />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="callDurationMinutes" fill="var(--chart-1)" radius={[3, 3, 0, 0]} />
+                  <Bar
+                    dataKey="callDurationMinutes"
+                    fill="var(--chart-1)"
+                    radius={[3, 3, 0, 0]}
+                  />
                 </BarChart>
               </ChartContainer>
             </ChartCard>
