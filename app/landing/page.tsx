@@ -31,10 +31,7 @@ export default function LandingPage() {
         className="object-cover object-center"
         sizes="100vw"
       />
-      <div
-        className="pointer-events-none absolute inset-0 bg-black/50"
-        aria-hidden="true"
-      />
+
 
       <div
         className="landing-frame relative z-10 grid h-full w-full"
