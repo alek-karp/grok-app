@@ -29,7 +29,10 @@ export async function resolvePatientProfile(input: {
     try {
       const user = await users.findByPhone(phone);
       if (user) {
-        return buildPatientProfile({ id: user.id, preferredName: user.name });
+        return buildPatientProfile({
+          id: user.id,
+          preferredName: user.name,
+        });
       }
     } catch (err) {
       console.error("[resolvePatient] DB lookup failed:", err);

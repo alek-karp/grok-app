@@ -9,3 +9,6 @@ Use `bun` (not npm or yarn).
 
 # Commit Format
 `prefix(area): message` — single line, no description body.
+
+# UI
+Do not use `text-xs` for any font sizes. Use `text-sm` as the minimum.
