@@ -112,3 +112,43 @@ export async function recallAboutPatient(
       updatedAt: r.updatedAt,
     }));
 }
+
+/**
+ * Whether we've ever stored anything for this patient — i.e. have they done a
+ * call with the AI before. Used to decide between the first-time intro call and
+ * the normal daily check-in. Returns false when memory is disabled (so a fresh
+ * install always starts with the intro).
+ *
+ * Note: a document added moments ago may still be processing; this checks for
+ * any document in the container regardless of status.
+ */
+export async function patientHasHistory(patientId: string): Promise<boolean> {
+  if (!isMemoryEnabled()) return false;
+
+  const res = await fetch(`${BASE_URL}/v3/documents/list`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.SUPERMEMORY_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      containerTags: [patientContainerTag(patientId)],
+      limit: 1,
+    }),
+  });
+
+  if (!res.ok) {
+    console.error("[supermemory] list failed:", res.status, await res.text());
+    // Fail safe: treat as "has history" so a transient error doesn't make a
+    // returning patient sit through the intro again.
+    return true;
+  }
+
+  const data = (await res.json()) as {
+    pagination?: { totalItems?: number };
+    memories?: unknown[];
+  };
+  const total =
+    data.pagination?.totalItems ?? (data.memories ? data.memories.length : 0);
+  return total > 0;
+}
