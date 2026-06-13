@@ -12,7 +12,7 @@ export function Navbar() {
   const pathname = usePathname()
   const router = useRouter()
 
-  if (pathname === ROUTES.landing) {
+  if (pathname === ROUTES.landing || pathname === ROUTES.phone) {
     return null
   }
 
@@ -23,10 +23,10 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/80 backdrop-blur">
       <div className="flex h-14 items-center px-4">
-        <div className="flex items-center gap-1.5 font-semibold tracking-tight">
+        <Link href={ROUTES.landing} className="flex items-center gap-1.5 font-semibold tracking-tight">
           <CircleDotDashed className="size-5" style={{ animation: "memento-spin 10s ease-in-out infinite" }} />
           Memento
-        </div>
+        </Link>
         <div className="absolute left-1/2 -translate-x-1/2 hidden sm:block">
           <Tabs value={pathname}>
             <TabsList>
