@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Navbar } from "@/components/navbar";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { UserGuard } from "@/components/user-guard";
 
 const inter = Inter({subsets:['latin'],variable:'--font-sans'});
 
@@ -37,8 +38,10 @@ export default function RootLayout({
       <body className="h-full flex flex-col overflow-hidden">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <TooltipProvider>
-            <Navbar />
-            {children}
+            <UserGuard>
+              <Navbar />
+              {children}
+            </UserGuard>
           </TooltipProvider>
         </ThemeProvider>
       </body>

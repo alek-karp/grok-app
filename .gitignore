@@ -48,6 +48,3 @@ next-env.d.ts
 
 # agent skills
 .agents/
-
-# phone page (WIP)
-app/phone/
