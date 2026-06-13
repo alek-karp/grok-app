@@ -49,7 +49,17 @@ export async function POST(request: Request) {
     .map((t) => `${t.role === "user" ? name : companion}: ${t.text.trim()}`)
     .join("\n");
 
-  const content = `Daily check-in call with ${name} on ${date}.\n\n${transcript}`;
+  // Frame the transcript so memory extraction captures the longitudinal
+  // cognitive picture (word-finding, recall, orientation, mood) as well as the
+  // life details — this is what lets us "slowly learn" how they're tracking.
+  const content = [
+    `Daily check-in call between ${companion} and ${name} on ${date}.`,
+    ``,
+    `Remember both: (a) life details ${name} shares (people, events, feelings, routine), and (b) observations about how ${name} is doing cognitively in this call — any word-finding difficulty or substitutions, what they did and didn't recall (including anything ${companion} asked them to hold onto), their orientation to day/time/place, and their mood and energy. Note these factually and gently for tracking changes over time.`,
+    ``,
+    `Transcript:`,
+    transcript,
+  ].join("\n");
 
   const result = await rememberAboutPatient(patient.id, content, {
     kind: "call_transcript",
