@@ -28,11 +28,11 @@ export default function LandingPage() {
         alt=""
         fill
         priority
-        className="object-cover object-[70%_center]"
+        className="object-cover object-center"
         sizes="100vw"
       />
       <div
-        className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/75 via-black/30 to-transparent"
+        className="pointer-events-none absolute inset-0 bg-black/50"
         aria-hidden="true"
       />
 
@@ -50,8 +50,8 @@ export default function LandingPage() {
         <Corner className="h-[var(--landing-gutter)] border-b border-l border-white/15" />
 
         <div className="border-r border-white/15" aria-hidden="true" />
-        <main className="relative flex flex-col items-start justify-center px-6 py-8 sm:px-10">
-          <div className="flex max-w-xl flex-col items-start gap-6">
+        <main className="relative flex flex-col items-center justify-center px-6 py-8 sm:px-10">
+          <div className="flex max-w-xl flex-col items-center gap-6 text-center">
             <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl">
               A daily voice companion for dementia care
             </h1>
