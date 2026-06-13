@@ -107,4 +107,23 @@ export const kpis = {
     `;
     return rows as KpiRow[];
   },
+
+  /** Most recent KPI row for a patient (used by the test debug panel). */
+  latestByPatient: async (patientId: string): Promise<KpiRow | null> => {
+    const rows = await sql`
+      SELECT
+        id, patient_id, patient_name, call_date::text AS call_date,
+        mood, sleep_quality, fluency_count, naming_accuracy,
+        word_finding_failures, immediate_recall, delayed_recall_words,
+        story_recall_details, orientation_score, stop_word_fraction,
+        lexical_diversity, repetition_count, medication_status,
+        cross_session_recall, safety_flag, safety_flag_type, engagement,
+        summary, observations_json, created_at
+      FROM kpi_results
+      WHERE patient_id = ${patientId}
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+    return (rows[0] as KpiRow) ?? null;
+  },
 };

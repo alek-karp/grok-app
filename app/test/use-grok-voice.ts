@@ -30,6 +30,25 @@ export type TranscriptEntry = {
   final: boolean;
 };
 
+/** A debug event surfaced in the /test panel for inspecting what's happening. */
+export type DebugEvent =
+  | {
+      id: string;
+      kind: "tool";
+      at: number;
+      name: string;
+      args: Record<string, unknown>;
+      status: "running" | "done" | "error";
+      result?: unknown;
+    }
+  | {
+      id: string;
+      kind: "kpi";
+      at: number;
+      status: "extracting" | "done" | "timeout";
+      result?: unknown;
+    };
+
 type ServerEvent = {
   type: string;
   [key: string]: unknown;
@@ -40,6 +59,19 @@ export function useGrokVoice() {
   const [error, setError] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [toolActivity, setToolActivity] = useState<string | null>(null);
+  const [debugEvents, setDebugEvents] = useState<DebugEvent[]>([]);
+
+  const pushDebug = useCallback((e: DebugEvent) => {
+    setDebugEvents((prev) => [...prev, e]);
+  }, []);
+  const updateDebug = useCallback(
+    (id: string, patch: Partial<DebugEvent>) => {
+      setDebugEvents((prev) =>
+        prev.map((e) => (e.id === id ? ({ ...e, ...patch } as DebugEvent) : e)),
+      );
+    },
+    [],
+  );
 
   // Keep a ref mirror of the transcript for the disconnect handler.
   // biome-ignore lint/correctness/useExhaustiveDependencies: ref sync only
@@ -82,6 +114,9 @@ export function useGrokVoice() {
     phone: "",
     name: "",
   });
+  // The latest KPI row id seen at call start, so we can detect when the
+  // background pipeline writes a NEW one after this call ends.
+  const baselineKpiIdRef = useRef<string | null>(null);
 
   const upsertStreaming = useCallback(
     (role: "user" | "assistant", text: string) => {
@@ -154,6 +189,43 @@ export function useGrokVoice() {
     }
   }, []);
 
+  // Poll the KPI endpoint until the background pipeline writes a row newer than
+  // the one we saw at call start, then surface it in the debug panel.
+  const pollForKpis = useCallback(async () => {
+    const debugId = crypto.randomUUID();
+    pushDebug({
+      id: debugId,
+      kind: "kpi",
+      at: Date.now(),
+      status: "extracting",
+    });
+    const body = JSON.stringify({
+      phone: identityRef.current.phone,
+      name: identityRef.current.name,
+    });
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const res = await fetch("/api/kpi/latest", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+        });
+        if (!res.ok) continue;
+        const { latest } = (await res.json()) as {
+          latest: { id: string } | null;
+        };
+        if (latest && latest.id !== baselineKpiIdRef.current) {
+          updateDebug(debugId, { status: "done", result: latest });
+          return;
+        }
+      } catch {
+        // keep polling
+      }
+    }
+    updateDebug(debugId, { status: "timeout" });
+  }, [pushDebug, updateDebug]);
+
   const handleFunctionCall = useCallback(
     async (event: ServerEvent) => {
       const name = String(event.name ?? "");
@@ -166,13 +238,25 @@ export function useGrokVoice() {
       }
 
       setToolActivity(`Calling ${name}…`);
+      const debugId = crypto.randomUUID();
+      pushDebug({
+        id: debugId,
+        kind: "tool",
+        at: Date.now(),
+        name,
+        args,
+        status: "running",
+      });
       let result: unknown;
+      let ok = true;
       try {
         result = await runClientTool(name, args, identityRef.current);
       } catch (err) {
+        ok = false;
         result = { error: err instanceof Error ? err.message : String(err) };
       }
       setToolActivity(null);
+      updateDebug(debugId, { status: ok ? "done" : "error", result });
 
       // Return the tool result to the model.
       send({
@@ -184,7 +268,7 @@ export function useGrokVoice() {
         },
       });
     },
-    [send],
+    [pushDebug, send, updateDebug],
   );
 
   const handleEvent = useCallback(
@@ -319,6 +403,8 @@ export function useGrokVoice() {
             turns,
           }),
         }).catch(() => {});
+        // Watch for the background KPI extraction and show it in the debug panel.
+        void pollForKpis();
       }
     }
 
@@ -345,12 +431,13 @@ export function useGrokVoice() {
     userItemsRef.current = new Map();
     setToolActivity(null);
     setStatus("idle");
-  }, []);
+  }, [pollForKpis]);
 
   const connect = useCallback(async () => {
     if (status !== "idle" && status !== "error") return;
     setError(null);
     setTranscript([]);
+    setDebugEvents([]);
     setStatus("connecting");
 
     try {
@@ -359,6 +446,23 @@ export function useGrokVoice() {
         phone: storage.getPhone(),
         name: storage.getName(),
       };
+
+      // Record the latest existing KPI row id so we can tell when this call's
+      // extraction produces a NEW one.
+      baselineKpiIdRef.current = null;
+      void fetch("/api/kpi/latest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: identityRef.current.phone,
+          name: identityRef.current.name,
+        }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          baselineKpiIdRef.current = d?.latest?.id ?? null;
+        })
+        .catch(() => {});
 
       // 1. Start the call: mint an ephemeral token AND get memory-personalized
       //    instructions, both built server-side (keys never reach the browser).
@@ -485,5 +589,13 @@ export function useGrokVoice() {
   // Clean up on unmount.
   useEffect(() => () => disconnect(), [disconnect]);
 
-  return { status, error, transcript, toolActivity, connect, disconnect };
+  return {
+    status,
+    error,
+    transcript,
+    toolActivity,
+    debugEvents,
+    connect,
+    disconnect,
+  };
 }
