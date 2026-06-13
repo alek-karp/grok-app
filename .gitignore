@@ -42,3 +42,12 @@ next-env.d.ts
 
 # claude
 .claude/
+
+# neon
+.neon
+
+# agent skills
+.agents/
+
+# phone page (WIP)
+app/phone/
