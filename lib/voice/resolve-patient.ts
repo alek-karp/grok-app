@@ -22,8 +22,10 @@ export async function resolvePatientProfile(input: {
   phone?: string;
   patientId?: string;
   name?: string;
+  companionName?: string;
 }): Promise<PatientProfile> {
   const phone = input.phone?.trim();
+  const companionName = input.companionName?.trim() || undefined;
 
   if (phone) {
     try {
@@ -32,6 +34,7 @@ export async function resolvePatientProfile(input: {
         return buildPatientProfile({
           id: user.id,
           preferredName: user.name,
+          companionName,
         });
       }
     } catch (err) {
@@ -43,6 +46,7 @@ export async function resolvePatientProfile(input: {
       return buildPatientProfile({
         id: phone,
         preferredName: input.name.trim(),
+        companionName,
       });
     }
   }
@@ -51,6 +55,7 @@ export async function resolvePatientProfile(input: {
     return buildPatientProfile({
       id: input.patientId,
       preferredName: input.name?.trim() || "there",
+      companionName,
     });
   }
 

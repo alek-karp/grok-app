@@ -81,11 +81,13 @@ const SHARED_PROFILE: Pick<
 export function buildPatientProfile(input: {
   id: string;
   preferredName: string;
+  companionName?: string;
 }): PatientProfile {
   return {
     ...SHARED_PROFILE,
     id: input.id,
     preferredName: input.preferredName,
+    ...(input.companionName ? { companionName: input.companionName } : {}),
   };
 }
 

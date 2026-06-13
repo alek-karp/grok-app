@@ -37,6 +37,11 @@ function getInitialVoice(): GrokVoice {
     : "ara";
 }
 
+function getInitialCompanionName(): string {
+  if (typeof window === "undefined") return "Cora";
+  return storage.getCompanionName();
+}
+
 function Section({
   icon: Icon,
   title,
@@ -77,6 +82,7 @@ export default function PersonalizationPage() {
   const [profile, setProfile] = useState<StoredProfile>(() => ({
     ...DEFAULT_PROFILE,
     voice: getInitialVoice(),
+    companionName: getInitialCompanionName(),
   }));
 
   function setRoutine(
@@ -277,12 +283,10 @@ export default function PersonalizationPage() {
                 <FieldLabel>Companion's name</FieldLabel>
                 <Input
                   value={profile.companionName ?? "Cora"}
-                  onChange={(e) =>
-                    setProfile((p) => ({
-                      ...p,
-                      companionName: e.target.value,
-                    }))
-                  }
+                  onChange={(e) => {
+                    storage.setCompanionName(e.target.value);
+                    setProfile((p) => ({ ...p, companionName: e.target.value }));
+                  }}
                   placeholder="Cora"
                 />
               </div>

@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   }
 
   // Resolve who we're calling from the DB (name + stable memory id).
-  let body: { phone?: string; patientId?: string; name?: string } = {};
+  let body: { phone?: string; patientId?: string; name?: string; companionName?: string } = {};
   try {
     body = await request.json();
   } catch {

@@ -540,6 +540,7 @@ export function useGrokVoice() {
         body: JSON.stringify({
           phone: identityRef.current.phone,
           name: identityRef.current.name,
+          companionName: storage.getCompanionName(),
         }),
       });
       if (!tokenRes.ok) {
