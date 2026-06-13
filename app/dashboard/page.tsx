@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -21,13 +21,12 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type {
   DashboardKpiEntry,
   DashboardKpiPayload,
 } from "@/lib/dashboard-kpi";
-import { BASELINES, type CallEntry, kpiData } from "@/lib/mock-kpi-data";
+import { BASELINES } from "@/lib/mock-kpi-data";
 import { storage } from "@/lib/storage";
 
 const activityData = [
@@ -105,35 +104,6 @@ type NumericKpiKey = {
     : never;
 }[keyof DashboardKpiEntry];
 
-function mockToDashboardEntry(entry: CallEntry): DashboardKpiEntry {
-  return {
-    date: entry.date,
-    iso: entry.iso,
-    patientName: "Mary Chen",
-    summary: null,
-    observations: [],
-    verbalFluency: entry.verbalFluency,
-    storyRecallDetails: entry.storyRecallDetails,
-    storyRecallSpeakingTime: entry.storyRecallSpeakingTime,
-    namingAccuracy: entry.namingAccuracy,
-    wordFindingFailures: entry.wordFindingFailures,
-    immediateWordRecall: entry.immediateWordRecall,
-    delayedWordRecall: entry.delayedWordRecall,
-    temporalOrientation: entry.temporalOrientation,
-    stopWordFraction: entry.stopWordFraction,
-    lexicalDiversity: null,
-    speakingTimeFluency: entry.speakingTimeFluency,
-    speakingTimeStoryRecall: entry.speakingTimeStoryRecall,
-    repetitionCount: entry.repetitionCount,
-    medicationAdherence: entry.medicationAdherence,
-    mood: entry.mood,
-    sleepQuality: null,
-    safetyFlag: entry.safetyFlag,
-    safetyFlagType: null,
-    callCompleted: entry.callCompleted,
-    callDurationMinutes: entry.callDurationMinutes,
-  };
-}
 
 function hasAnyValue(data: DashboardKpiEntry[], keys: NumericKpiKey[]) {
   return data.some((entry) =>
@@ -244,10 +214,10 @@ function RecentCallPanel({
           <h2 className="text-sm font-semibold">Summary</h2>
           <p className="text-sm text-muted-foreground">
             {loading
-              ? "Loading KPI history..."
+              ? "Loading call history…"
               : latest
                 ? `${count} call${count === 1 ? "" : "s"} · last on ${latest.date}`
-                : "No stored KPI rows found"}
+                : "No calls recorded yet"}
           </p>
         </div>
         {error && (
@@ -270,7 +240,7 @@ function RecentCallPanel({
       ) : (
         <div className="flex min-h-64 flex-1 items-center justify-center rounded-lg border border-dashed px-6 text-center text-sm text-muted-foreground">
           {loading
-            ? "Loading actual KPI rows from Postgres."
+            ? "Loading your call history…"
             : "Run a call or use the mock switch to preview the dashboard with sample history."}
         </div>
       )}
@@ -279,8 +249,6 @@ function RecentCallPanel({
 }
 
 export default function DashboardPage() {
-  const mockData = useMemo(() => kpiData.map(mockToDashboardEntry), []);
-  const [useMock, setUseMock] = useState(false);
   const [actualData, setActualData] = useState<DashboardKpiEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -333,12 +301,10 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const data = useMock ? mockData : actualData;
+  const data = actualData;
   const latest = data.at(-1);
-  const patientName =
-    latest?.patientName ??
-    (useMock ? "Mary Chen" : storedName || "Current patient");
-  const patientDetail = useMock ? "76 - early MCI" : "Postgres KPI history";
+  const patientName = latest?.patientName ?? (storedName || "Current patient");
+  const patientDetail = "Cognitive health tracking";
 
   useEffect(() => {
     if (data.length === 0) {
@@ -374,7 +340,7 @@ export default function DashboardPage() {
   const xInterval = chartInterval(data);
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-8 py-4">
+    <main className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-8 py-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-base font-semibold">
@@ -385,26 +351,17 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {!useMock && safetyFlagCount > 0 && (
+          {safetyFlagCount > 0 && (
             <Badge variant="destructive">
               {safetyFlagCount} safety flag{safetyFlagCount > 1 ? "s" : ""}
             </Badge>
           )}
-          <div className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm text-muted-foreground shadow-sm">
-            <span id="mock-data-label">Mock data</span>
-            <Switch
-              checked={useMock}
-              onCheckedChange={setUseMock}
-              size="sm"
-              aria-labelledby="mock-data-label"
-            />
-          </div>
         </div>
       </div>
 
       <Tabs
         defaultValue="overview"
-        className="flex min-h-0 flex-1 flex-col gap-4"
+        className="mt-[25px] flex min-h-0 flex-1 flex-col gap-4"
       >
         <TabsList className="w-fit shrink-0">
           <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -421,8 +378,8 @@ export default function DashboardPage() {
           <RecentCallPanel
             latest={latest}
             count={data.length}
-            loading={!useMock && loading}
-            error={!useMock ? error : null}
+            loading={loading}
+            error={error}
             trendSummary={trendSummary}
             trendLoading={trendLoading}
           />
