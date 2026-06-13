@@ -28,6 +28,20 @@ export type KpiRow = {
   created_at: string;
 };
 
+export type TranscriptListRow = {
+  id: string;
+  patient_name: string | null;
+  call_date: string;
+  mood: string | null;
+  safety_flag: boolean;
+  summary: string | null;
+  created_at: string;
+};
+
+export type TranscriptDetailRow = TranscriptListRow & {
+  transcript: string | null;
+};
+
 export type KpiInsert = {
   patientId: string;
   patientName?: string | null;
@@ -106,6 +120,35 @@ export const kpis = {
       LIMIT ${limit}
     `;
     return rows as KpiRow[];
+  },
+
+  /** Lightweight list for the transcripts page — no full transcript text. */
+  listTranscriptsByPatient: async (
+    patientId: string,
+    limit = 60,
+  ): Promise<TranscriptListRow[]> => {
+    const rows = await sql`
+      SELECT id, patient_name, call_date::text AS call_date,
+             mood, safety_flag, summary, created_at
+      FROM kpi_results
+      WHERE patient_id = ${patientId}
+      ORDER BY call_date DESC, created_at DESC
+      LIMIT ${limit}
+    `;
+    return rows as TranscriptListRow[];
+  },
+
+  /** Single row with full transcript for preview. */
+  findTranscriptById: async (
+    id: string,
+  ): Promise<TranscriptDetailRow | null> => {
+    const rows = await sql`
+      SELECT id, patient_name, call_date::text AS call_date,
+             mood, safety_flag, summary, transcript, created_at
+      FROM kpi_results
+      WHERE id = ${id}
+    `;
+    return (rows[0] as TranscriptDetailRow) ?? null;
   },
 
   /** Most recent KPI row for a patient (used by the test debug panel). */

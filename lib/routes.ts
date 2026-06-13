@@ -5,6 +5,7 @@ export const ROUTES = {
   dashboard: "/dashboard",
   personalization: "/personalization",
   caretaker: "/caretaker",
+  transcripts: "/transcripts",
   phone: "/phone",
   call: (id: string) => `/call/${id}`,
 } as const;
