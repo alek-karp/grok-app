@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { kpiData } from "@/lib/mock-kpi-data";
 import {
   ChartContainer, ChartTooltip, ChartTooltipContent,
@@ -10,7 +11,11 @@ import {
   ReferenceLine, ReferenceArea,
 } from "recharts";
 
-const chartData = kpiData.map((d) => {
+const BASELINE_WINDOW = 7;
+const RANGE_OPTIONS = [14, 30, 60] as const;
+type Range = typeof RANGE_OPTIONS[number];
+
+const allChartData = kpiData.map((d) => {
   const fluency   = (d.verbalFluency / 20) * 100;
   const naming    = d.namingAccuracy;
   const recall    = ((d.immediateWordRecall + d.delayedWordRecall) / 6) * 100;
@@ -26,6 +31,13 @@ const chartData = kpiData.map((d) => {
   };
 });
 
+const baselineComposites = allChartData.slice(0, BASELINE_WINDOW).map((d) => d.composite);
+const baselineMean = baselineComposites.reduce((a, b) => a + b, 0) / baselineComposites.length;
+const baselineVariance = baselineComposites.reduce((s, v) => s + (v - baselineMean) ** 2, 0) / (baselineComposites.length - 1);
+const baselineSd = Math.sqrt(baselineVariance);
+const sdUpper = Math.round(baselineMean + 2 * baselineSd);
+const sdLower = Math.round(baselineMean - 2 * baselineSd);
+
 const config = {
   composite:   { label: "Composite",   color: "var(--chart-1)" },
   language:    { label: "Language",    color: "var(--chart-2)" },
@@ -34,24 +46,56 @@ const config = {
 } satisfies ChartConfig;
 
 export function CognitiveDeclineChart() {
+  const [range, setRange] = useState<Range>(30);
+
+  const chartData = allChartData.slice(-range);
+  const baselineVisible = chartData.some((d) => d.date === allChartData[0].date);
+  const baselineLastDate = allChartData[BASELINE_WINDOW - 1].date;
+  const monitoringFirstDate = allChartData[BASELINE_WINDOW].date;
+
   return (
     <div className="flex flex-col rounded-xl border bg-card text-card-foreground shadow flex-1 min-h-0">
-      <div className="p-4 pb-2 shrink-0">
-        <h2 className="text-sm font-semibold">Cognitive Decline</h2>
-        <p className="text-xs text-muted-foreground">
-          All domains normalised 0–100 · shading marks mild (yellow) and significant (red) decline zones
-        </p>
+      <div className="p-4 pb-2 shrink-0 flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-sm font-semibold">Cognitive Decline</h2>
+          <p className="text-sm text-muted-foreground">
+            All domains normalised 0–100 · green band = personal baseline ±2σ (composite)
+          </p>
+        </div>
+        <div className="flex gap-1 shrink-0">
+          {RANGE_OPTIONS.map((r) => (
+            <button
+              key={r}
+              onClick={() => setRange(r)}
+              className={`px-2 py-1 rounded text-sm font-medium transition-colors ${
+                range === r
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              {r}d
+            </button>
+          ))}
+        </div>
       </div>
       <div className="p-4 pt-0 flex-1 min-h-0">
         <ChartContainer config={config} className="h-full w-full">
           <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-            <ReferenceArea y1={0}  y2={50} fill="var(--destructive)" fillOpacity={0.06} />
-            <ReferenceArea y1={50} y2={70} fill="var(--chart-3)"    fillOpacity={0.06} />
+            {baselineVisible && (
+              <ReferenceArea x1={chartData[0].date} x2={baselineLastDate} fill="hsl(var(--muted))" fillOpacity={0.4} />
+            )}
+            <ReferenceArea
+              x1={monitoringFirstDate}
+              x2={chartData[chartData.length - 1].date}
+              y1={sdLower}
+              y2={sdUpper}
+              fill="hsl(142 72% 29%)"
+              fillOpacity={0.12}
+            />
             <CartesianGrid vertical={false} />
             <XAxis dataKey="date" tickLine={false} axisLine={false} tick={{ fontSize: 11 }} />
             <YAxis tickLine={false} axisLine={false} domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}`} />
-            <ReferenceLine y={70} stroke="var(--chart-3)"    strokeDasharray="4 2" strokeOpacity={0.5} />
-            <ReferenceLine y={50} stroke="var(--destructive)" strokeDasharray="4 2" strokeOpacity={0.5} />
+            <ReferenceLine y={Math.round(baselineMean)} stroke="hsl(142 72% 29%)" strokeDasharray="4 3" strokeOpacity={0.7} />
             <ChartTooltip content={<ChartTooltipContent formatter={(v) => `${v}`} />} />
             <ChartLegend content={<ChartLegendContent />} />
             <Line dataKey="language"    type="monotone" stroke="var(--chart-2)" strokeWidth={1.5} dot={{ r: 3 }} strokeOpacity={0.7} />
