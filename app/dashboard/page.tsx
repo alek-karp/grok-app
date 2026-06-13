@@ -22,6 +22,12 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip as TooltipPrimitive } from "radix-ui";
+import {
+  Tooltip,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type {
   DashboardKpiEntry,
   DashboardKpiPayload,
@@ -83,19 +89,31 @@ const repetitionConfig = {
   repetitionCount: { label: "Repetitions", color: "var(--chart-5)" },
 } satisfies ChartConfig;
 
+// Semantic status colors — real green/yellow/red/gray so the dots actually
+// match the legend (the theme's --chart-* vars are all shades of purple). The
+// vars are defined in globals.css with brighter values in dark mode.
+const STATUS_COLORS = {
+  green: "var(--status-green)",
+  yellow: "var(--status-yellow)",
+  orange: "var(--status-orange)",
+  red: "var(--status-red)",
+  darkRed: "var(--status-dark-red)",
+  gray: "var(--status-gray)",
+} as const;
+
 const medColorMap: Record<string, string> = {
-  Confirmed: "var(--chart-1)",
-  Uncertain: "var(--chart-3)",
-  Missed: "var(--chart-2)",
-  "Not assessed": "var(--muted-foreground)",
+  Confirmed: STATUS_COLORS.green,
+  Uncertain: STATUS_COLORS.yellow,
+  Missed: STATUS_COLORS.red,
+  "Not assessed": STATUS_COLORS.gray,
 };
 const moodColorMap: Record<string, string> = {
-  Cheerful: "var(--chart-1)",
-  Neutral: "var(--chart-3)",
-  Flat: "var(--chart-4)",
-  Anxious: "var(--chart-2)",
-  Agitated: "var(--chart-5)",
-  "Not assessed": "var(--muted-foreground)",
+  Cheerful: STATUS_COLORS.green,
+  Neutral: STATUS_COLORS.yellow,
+  Flat: STATUS_COLORS.orange,
+  Anxious: STATUS_COLORS.red,
+  Agitated: STATUS_COLORS.darkRed,
+  "Not assessed": STATUS_COLORS.gray,
 };
 
 type NumericKpiKey = {
@@ -155,14 +173,14 @@ function StatCard({
   title,
   current,
   currentColor,
-  meta,
+  legend,
   dots,
 }: {
   title: string;
   current: string;
   currentColor: string;
-  meta: string;
-  dots: { color: string; label: string }[];
+  legend: { color: string; label: string }[];
+  dots: { color: string; date: string; status: string }[];
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow">
@@ -173,21 +191,62 @@ function StatCard({
         <span className="text-2xl font-bold" style={{ color: currentColor }}>
           {current}
         </span>
-        <p className="mt-0.5 text-sm text-muted-foreground">{meta}</p>
+        <p className="mt-0.5 text-sm text-muted-foreground">Most recent call</p>
       </div>
-      <div className="flex flex-wrap gap-1.5">
-        {dots.map((d, index) => (
-          <div
-            key={`${d.label}-${d.color}-${index}`}
-            className="size-3.5 rounded-full"
-            style={{ backgroundColor: d.color, opacity: 0.85 }}
-            title={d.label}
-          />
+
+      {/* Key: what each dot color means */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        {legend.map((item) => (
+          <span
+            key={item.label}
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground"
+          >
+            <span
+              className="size-2.5 rounded-full"
+              style={{ backgroundColor: item.color }}
+            />
+            {item.label}
+          </span>
         ))}
       </div>
-      <p className="text-sm text-muted-foreground">
-        Recent call history. Hover dots for dates.
-      </p>
+
+      {/* Call history: one dot per call */}
+      <div className="flex flex-col gap-1">
+        <TooltipProvider>
+          <div className="flex flex-wrap gap-1.5">
+            {dots.map((d, index) => (
+              <Tooltip key={`${d.date}-${index}`}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="size-3.5 rounded-full"
+                    style={{ backgroundColor: d.color }}
+                    aria-label={`${d.date}: ${d.status}`}
+                  />
+                </TooltipTrigger>
+                <TooltipPrimitive.Portal>
+                  <TooltipPrimitive.Content
+                    sideOffset={6}
+                    className="z-50 grid min-w-32 items-start gap-1.5 rounded-xl bg-popover px-2.5 py-1.5 text-sm text-popover-foreground shadow-lg ring-1 ring-foreground/5 data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 dark:ring-foreground/10"
+                  >
+                    <div className="font-medium">{d.date}</div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="size-2.5 shrink-0 rounded-xs"
+                        style={{ backgroundColor: d.color }}
+                      />
+                      <span className="text-muted-foreground">{d.status}</span>
+                    </div>
+                  </TooltipPrimitive.Content>
+                </TooltipPrimitive.Portal>
+              </Tooltip>
+            ))}
+          </div>
+        </TooltipProvider>
+        <p className="text-sm text-muted-foreground">
+          Each dot is one call · oldest left, newest right · hover for date
+        </p>
+      </div>
     </div>
   );
 }
@@ -849,20 +908,34 @@ export default function DashboardPage() {
               title="Medication adherence"
               current={medCurrent}
               currentColor={medCurrentColor}
-              meta="Green confirmed, yellow uncertain, red missed, gray not assessed"
+              legend={[
+                { color: STATUS_COLORS.green, label: "Confirmed" },
+                { color: STATUS_COLORS.yellow, label: "Uncertain" },
+                { color: STATUS_COLORS.red, label: "Missed" },
+                { color: STATUS_COLORS.gray, label: "Not assessed" },
+              ]}
               dots={data.map((d) => ({
-                color: medColorMap[d.medicationAdherence] ?? "var(--muted)",
-                label: `${d.date}: ${d.medicationAdherence}`,
+                color: medColorMap[d.medicationAdherence] ?? STATUS_COLORS.gray,
+                date: d.date,
+                status: d.medicationAdherence,
               }))}
             />
             <StatCard
               title="Mood & affect"
               current={moodCurrent}
               currentColor={moodCurrentColor}
-              meta="Green cheerful, yellow neutral, orange flat, red anxious"
+              legend={[
+                { color: STATUS_COLORS.green, label: "Cheerful" },
+                { color: STATUS_COLORS.yellow, label: "Neutral" },
+                { color: STATUS_COLORS.orange, label: "Flat" },
+                { color: STATUS_COLORS.red, label: "Anxious" },
+                { color: STATUS_COLORS.darkRed, label: "Agitated" },
+                { color: STATUS_COLORS.gray, label: "Not assessed" },
+              ]}
               dots={data.map((d) => ({
-                color: moodColorMap[d.mood] ?? "var(--muted)",
-                label: `${d.date}: ${d.mood}`,
+                color: moodColorMap[d.mood] ?? STATUS_COLORS.gray,
+                date: d.date,
+                status: d.mood,
               }))}
             />
             <StatCard
@@ -873,12 +946,19 @@ export default function DashboardPage() {
                   : `${safetyFlagCount} flag${safetyFlagCount > 1 ? "s" : ""}`
               }
               currentColor={
-                safetyFlagCount === 0 ? "var(--chart-1)" : "var(--chart-2)"
+                safetyFlagCount === 0 ? STATUS_COLORS.green : STATUS_COLORS.red
               }
-              meta="Falls, wandering, acute confusion, distress, or help requests"
+              legend={[
+                { color: STATUS_COLORS.green, label: "Clear" },
+                {
+                  color: STATUS_COLORS.red,
+                  label: "Flagged (fall, wandering, distress, help request)",
+                },
+              ]}
               dots={data.map((d) => ({
-                color: d.safetyFlag ? "var(--chart-2)" : "var(--chart-1)",
-                label: `${d.date}: ${d.safetyFlag ? "Flagged" : "Clear"}`,
+                color: d.safetyFlag ? STATUS_COLORS.red : STATUS_COLORS.green,
+                date: d.date,
+                status: d.safetyFlag ? "Flagged" : "Clear",
               }))}
             />
           </div>
