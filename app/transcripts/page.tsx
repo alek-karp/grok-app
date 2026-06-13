@@ -22,9 +22,11 @@ function formatDate(dateStr: string) {
 function ConversationPreview({
   transcript,
   patientName,
+  companionName,
 }: {
   transcript: string;
   patientName: string | null;
+  companionName: string;
 }) {
   const lines = transcript.split("\n").filter(Boolean);
 
@@ -41,10 +43,10 @@ function ConversationPreview({
         }
         const speaker = line.slice(0, colonIdx);
         const text = line.slice(colonIdx + 2);
-        // Patient name match → patient (right). Everything else is Cora (left).
         const isPatient =
           patientName != null &&
           speaker.toLowerCase() === patientName.toLowerCase();
+        const displayName = isPatient ? speaker : companionName;
 
         return (
           <div
@@ -52,7 +54,7 @@ function ConversationPreview({
             className={`flex flex-col gap-0.5 ${isPatient ? "items-end" : "items-start"}`}
           >
             <span className="px-1 text-sm font-medium text-muted-foreground">
-              {speaker}
+              {displayName}
             </span>
             <div
               className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
@@ -76,6 +78,9 @@ export default function TranscriptsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<TranscriptDetailRow | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [companionName] = useState(() =>
+    typeof window === "undefined" ? "Cora" : storage.getCompanionName(),
+  );
 
   useEffect(() => {
     const phone = storage.getPhone();
@@ -178,7 +183,8 @@ export default function TranscriptsPage() {
               <div className="flex items-center gap-3">
                 <h2 className="text-base font-semibold">
                   {formatDate(detail.call_date)}
-                  {detail.patient_name ? ` — ${detail.patient_name}` : ""}
+                  {` — ${companionName}`}
+                  {detail.patient_name ? ` & ${detail.patient_name}` : ""}
                 </h2>
                 <div className="flex gap-1.5">
                   {detail.safety_flag && (
@@ -200,6 +206,7 @@ export default function TranscriptsPage() {
                 <ConversationPreview
                   transcript={detail.transcript}
                   patientName={detail.patient_name}
+                  companionName={companionName}
                 />
               ) : (
                 <p className="text-sm text-muted-foreground">
