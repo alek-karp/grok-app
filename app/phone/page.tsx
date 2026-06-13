@@ -7,16 +7,24 @@ import { Input } from "@/components/ui/input";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { storage } from "@/lib/storage";
 import { ROUTES } from "@/lib/routes";
+import { upsertUser } from "./actions";
 
 export default function PhonePage() {
   const router = useRouter();
   const [phone, setPhone] = useState("");
   const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    storage.setUser(phone.trim(), name.trim());
-    router.push(ROUTES.home);
+    setLoading(true);
+    try {
+      await upsertUser(phone.trim(), name.trim());
+      storage.setUser(phone.trim(), name.trim());
+      router.push(ROUTES.home);
+    } finally {
+      setLoading(false);
+    }
   }
 
   const isValid = phone.trim() && name.trim();
@@ -38,8 +46,8 @@ export default function PhonePage() {
             autoComplete="name"
           />
           <PhoneInput value={phone} onChange={setPhone} />
-          <Button type="submit" className="w-full" disabled={!isValid}>
-            Continue
+          <Button type="submit" className="w-full" disabled={!isValid || loading}>
+            {loading ? "Saving..." : "Continue"}
           </Button>
         </form>
       </div>
