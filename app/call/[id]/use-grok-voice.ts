@@ -13,14 +13,16 @@ const SAMPLE_RATE = 24000;
 const MODEL = "grok-voice-think-fast-1.1";
 const REALTIME_URL = `wss://api.x.ai/v1/realtime?model=${MODEL}`;
 
-// Assessment-agenda pacing. Cora advances through the ordered clinical beats
-// (see lib/voice/call-agenda.ts) on her own during natural lulls, so the call
-// keeps moving instead of stalling in open-ended small talk.
+// Agenda pacing. Cora advances through the ordered clinical beats (see
+// lib/voice/call-agenda.ts) on her own during natural lulls, so the call keeps
+// moving instead of stalling in open-ended small talk.
 //  - WARMUP: assistant turns of pure warmth before the first beat is injected.
-//  - SPACING: minimum assistant turns between injected beats, so each probe is
-//    followed by a free conversational turn (probe, react, probe, react…).
-const AGENDA_WARMUP_TURNS = 1;
-const AGENDA_TURN_SPACING = 2;
+//  - SPACING: minimum assistant turns between injected beats. The system prompt
+//    now also self-drives the arc, so we keep the injected cues SPARSE — they're
+//    a gentle backstop ensuring coverage/order, not a second engine racing the
+//    prompt (which made transitions feel abrupt/forced).
+const AGENDA_WARMUP_TURNS = 2;
+const AGENDA_TURN_SPACING = 3;
 
 // Fallback instructions (no memory) if the server doesn't return personalized
 // ones. Normally /api/realtime-token returns memory-enriched instructions.

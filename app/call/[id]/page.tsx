@@ -16,6 +16,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   Conversation,
   ConversationContent,
@@ -26,6 +27,7 @@ import type { PersonaState } from "@/components/ai-elements/persona";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import {
   type DebugEvent,
@@ -377,6 +379,7 @@ function PersonaCenter({
   error: string | null;
   muted: boolean;
   toggleMute: () => void;
+  hasEnded: boolean;
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-6 min-h-0 flex-1">
@@ -388,14 +391,28 @@ function PersonaCenter({
 
       <div className="flex flex-col items-center gap-3">
         {!isLive ? (
-          <Button size="lg" onClick={connect} disabled={status === "connecting"}>
-            {status === "connecting" ? (
-              <Loader2 className="animate-spin" />
-            ) : (
-              <Mic />
-            )}
-            {status === "connecting" ? "Connecting" : "Start call"}
-          </Button>
+          <div className="flex flex-col items-center gap-3">
+            <Button size="lg" onClick={connect} disabled={status === "connecting"}>
+              {status === "connecting" ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <Mic />
+              )}
+              {status === "connecting"
+                ? "Connecting"
+                : hasEnded
+                  ? "Start another call"
+                  : "Start call"}
+            </Button>
+            {hasEnded ? (
+              <Button asChild size="lg" variant="secondary">
+                <Link href={ROUTES.dashboard}>
+                  <Activity />
+                  View dashboard
+                </Link>
+              </Button>
+            ) : null}
+          </div>
         ) : (
           <div className="flex items-center gap-2">
             <Button
@@ -448,6 +465,9 @@ export default function CallPage() {
   } = useGrokVoice();
   const isLive = status === "listening" || status === "speaking";
   const [mobileTab, setMobileTab] = useState<MobileTab>("persona");
+  // A call has ended once we're back to idle but a transcript was produced —
+  // that's when we surface the "View dashboard" path.
+  const hasEnded = !isLive && status !== "connecting" && transcript.length > 0;
 
   return (
     <>
@@ -467,6 +487,7 @@ export default function CallPage() {
           error={error}
           muted={muted}
           toggleMute={toggleMute}
+          hasEnded={hasEnded}
         />
 
         <div className="flex min-h-0 flex-col gap-2">
@@ -490,6 +511,7 @@ export default function CallPage() {
               error={error}
               muted={muted}
               toggleMute={toggleMute}
+              hasEnded={hasEnded}
             />
           )}
           {mobileTab === "transcript" && (
