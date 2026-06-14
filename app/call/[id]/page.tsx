@@ -370,6 +370,7 @@ function PersonaCenter({
   error,
   muted,
   toggleMute,
+  hasEnded,
 }: {
   status: VoiceStatus;
   isLive: boolean;
