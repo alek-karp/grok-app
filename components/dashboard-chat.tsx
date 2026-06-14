@@ -15,6 +15,7 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "motion/react";
+import { Shimmer } from "@/components/ai-elements/shimmer";
 import { XIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -172,9 +173,9 @@ export function DashboardChat({
             >
               <Message from="assistant">
                 <MessageContent>
-                  <span className="text-sm text-muted-foreground">
+                  <Shimmer className="text-sm" duration={1.5}>
                     Thinking…
-                  </span>
+                  </Shimmer>
                 </MessageContent>
               </Message>
             </motion.div>
