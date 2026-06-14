@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { DashboardChat } from "@/components/dashboard-chat";
+import { buildTabContext, getTabDisplayName } from "@/lib/dashboard-chat-context";
+import { useDashboardChat } from "@/components/dashboard-chat-provider";
+import { AnimatePresence, motion } from "motion/react";
 import {
   Bar,
   BarChart,
@@ -34,6 +38,7 @@ import type {
 } from "@/lib/dashboard-kpi";
 import { BASELINES } from "@/lib/mock-kpi-data";
 import { storage } from "@/lib/storage";
+import { cn } from "@/lib/utils";
 
 const activityData = [
   { day: "Mon", steps: 4200, activeMin: 32 },
@@ -251,61 +256,6 @@ function StatCard({
   );
 }
 
-function RecentCallPanel({
-  latest,
-  count,
-  loading,
-  error,
-  trendSummary,
-  trendLoading,
-}: {
-  latest: DashboardKpiEntry | undefined;
-  count: number;
-  loading: boolean;
-  error: string | null;
-  trendSummary: string | null;
-  trendLoading: boolean;
-}) {
-  return (
-    <div className="flex min-h-0 flex-col rounded-xl border bg-card p-4 text-card-foreground shadow">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold">Summary</h2>
-          <p className="text-sm text-muted-foreground">
-            {loading
-              ? "Loading call history…"
-              : latest
-                ? `${count} call${count === 1 ? "" : "s"} · last on ${latest.date}`
-                : "No calls recorded yet"}
-          </p>
-        </div>
-        {error && (
-          <Badge variant="destructive">Unavailable</Badge>
-        )}
-      </div>
-
-      {latest ? (
-        trendLoading ? (
-          <p className="text-sm text-muted-foreground animate-pulse">
-            Analyzing call history…
-          </p>
-        ) : trendSummary ? (
-          <p className="text-sm leading-relaxed">{trendSummary}</p>
-        ) : (
-          <p className="text-sm leading-relaxed text-muted-foreground">
-            {latest.summary || "No summary available."}
-          </p>
-        )
-      ) : (
-        <div className="flex min-h-64 flex-1 items-center justify-center rounded-lg border border-dashed px-6 text-center text-sm text-muted-foreground">
-          {loading
-            ? "Loading your call history…"
-            : "Run a call or use the mock switch to preview the dashboard with sample history."}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function DashboardPage() {
   const [actualData, setActualData] = useState<DashboardKpiEntry[]>([]);
@@ -314,6 +264,12 @@ export default function DashboardPage() {
   const [storedName, setStoredName] = useState("");
   const [trendSummary, setTrendSummary] = useState<string | null>(null);
   const [trendLoading, setTrendLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
+  const { open: chatOpen, close, openChat } = useDashboardChat();
+
+  useEffect(() => {
+    openChat();
+  }, [openChat]);
 
   useEffect(() => {
     let ignore = false;
@@ -387,9 +343,7 @@ export default function DashboardPage() {
       .finally(() => {
         if (!ignore) setTrendLoading(false);
       });
-    return () => {
-      ignore = true;
-    };
+    return () => { ignore = true; };
   }, [data, patientName]);
   const safetyFlagCount = data.filter((d) => d.safetyFlag).length;
   const medCurrent = latest?.medicationAdherence ?? "Not assessed";
@@ -399,6 +353,7 @@ export default function DashboardPage() {
   const xInterval = chartInterval(data);
 
   return (
+    <div className="flex min-h-0 flex-1 overflow-hidden">
     <main className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-8 py-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -419,7 +374,8 @@ export default function DashboardPage() {
       </div>
 
       <Tabs
-        defaultValue="overview"
+        value={activeTab}
+        onValueChange={setActiveTab}
         className="mt-[25px] flex min-h-0 flex-1 flex-col gap-4"
       >
         <TabsList className="w-fit shrink-0">
@@ -431,17 +387,9 @@ export default function DashboardPage() {
 
         <TabsContent
           value="overview"
-          className="mt-0 grid min-h-[560px] flex-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]"
+          className="mt-0 flex flex-col flex-1 min-h-0"
         >
           <CognitiveDeclineChart data={data} />
-          <RecentCallPanel
-            latest={latest}
-            count={data.length}
-            loading={loading}
-            error={error}
-            trendSummary={trendSummary}
-            trendLoading={trendLoading}
-          />
         </TabsContent>
 
         <TabsContent
@@ -1047,5 +995,19 @@ export default function DashboardPage() {
         </TabsContent>
       </Tabs>
     </main>
+    <AnimatePresence>
+      {chatOpen && (
+        <DashboardChat
+          key="dashboard-chat"
+          tabName={getTabDisplayName(activeTab)}
+          context={buildTabContext(activeTab, data, latest)}
+          patientName={patientName}
+          trendSummary={trendSummary}
+          trendLoading={trendLoading}
+          onClose={close}
+        />
+      )}
+    </AnimatePresence>
+    </div>
   );
 }

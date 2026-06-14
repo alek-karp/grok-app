@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Navbar } from "@/components/navbar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { UserGuard } from "@/components/user-guard";
+import { DashboardChatProvider } from "@/components/dashboard-chat-provider";
 import { Toaster } from "sonner";
 
 const inter = Inter({subsets:['latin'],variable:'--font-sans'});
@@ -40,8 +41,10 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <TooltipProvider>
             <UserGuard>
-              <Navbar />
-              {children}
+              <DashboardChatProvider>
+                <Navbar />
+                {children}
+              </DashboardChatProvider>
             </UserGuard>
             <Toaster richColors position="bottom-right" />
           </TooltipProvider>

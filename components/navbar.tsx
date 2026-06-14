@@ -5,8 +5,9 @@ import { useRouter, usePathname } from "next/navigation"
 import { ModeToggle } from "@/components/mode-toggle"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { PhoneCallIcon, CircleDotDashed, LayoutDashboard, SlidersHorizontal, UserRound, ScrollText } from "lucide-react"
+import { PhoneCallIcon, CircleDotDashed, LayoutDashboard, SlidersHorizontal, UserRound, ScrollText, MessageCircleIcon } from "lucide-react"
 import { ROUTES } from "@/lib/routes"
+import { useDashboardChat } from "@/components/dashboard-chat-provider"
 
 export function Navbar() {
   const pathname = usePathname()
@@ -15,6 +16,8 @@ export function Navbar() {
   if (pathname === ROUTES.landing || pathname === ROUTES.phone) {
     return null
   }
+
+  const { open, toggle } = useDashboardChat()
 
   const startCall = () => {
     router.push(ROUTES.call(crypto.randomUUID()))
@@ -62,6 +65,17 @@ export function Navbar() {
             <PhoneCallIcon className="size-3.5" />
             Call
           </Button>
+          {pathname === ROUTES.dashboard && (
+            <Button
+              onClick={toggle}
+              size="sm"
+              variant={open ? "secondary" : "outline"}
+              className="gap-1.5"
+            >
+              <MessageCircleIcon className="size-3.5" />
+              Ask
+            </Button>
+          )}
           <ModeToggle />
         </div>
       </div>
